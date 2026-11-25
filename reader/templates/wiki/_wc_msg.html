@@ -1,0 +1,20 @@
+{% comment %}
+一条对话消息（阶段 2.1），可带它自己的划线/批注（`show_marks` 控制）。
+
+★ 2026-11-22：审批对话传 show_marks=0，只出文字；文章对话仍为 1，下面这套
+  消息级痕迹机制原样保留。
+
+★ 为什么消息也要有自己的 marks 容器：划线批注的锚点是「在这段文字里的位置」，
+  而对话消息是一段独立文字。消息级标记用 `source_type="chat"` +
+  `source_id=<消息 id>`，文章正文那边（entry/report）完全不受影响 —— 否则文章
+  渲染器会去找根本不在正文里的句子，全部落位失败，全掉进「未定位」列表。
+
+★ `oob`：单独渲染这一条（划线/批注后局部刷新）时要带 `hx-swap-oob="true"`，
+  否则 htmx 不会拿它替换页面上那条消息，正文里刚点的高亮就刷不出来。
+{% endcomment %}
+<div class="wc-msg wc-{{ m.role }}"{% if oob %} hx-swap-oob="true"{% endif %}
+     id="wc-msg-{{ m.id }}"
+     {% if show_marks %}data-mark-type="chat" data-mark-id="{{ m.id }}"{% endif %}>
+  <div class="wc-text"{% if show_marks %} data-mark-body{% endif %}>{{ m.html|safe }}</div>
+  {% if show_marks %}{% include "wiki/_marks.html" with source_type="chat" source_id=m.id highlights=marks.highlights annotations=marks.annotations err=marks.err undisplayed=marks_undisplayed %}{% endif %}
+</div>

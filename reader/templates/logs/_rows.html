@@ -1,0 +1,29 @@
+{% comment %}
+日志行片段（htmx 每次轮询换掉的就是这一段）。
+★ 一条记录 = 一行头 + 缩进的异常栈（<details> 收起，行高不被栈撑乱）。
+★ 行序是**最新在上**：新日志出现在你眼皮底下，不用往下滚。
+   （滚动位置的保持在 app.js 里做：停在顶部时跟随新行，翻旧账时不被顶走。）
+{% endcomment %}
+{% for r in rows %}
+<div class="log-row lv-{{ r.level|lower }}">
+  <span class="log-ts" title="{{ r.ts }}">{{ r.time }}</span>
+  <span class="log-lv">{{ r.lv_short }}</span>
+  <span class="log-src" title="{{ r.logger }}">{{ r.short }}</span>
+  <span class="log-msg">{{ r.msg }}</span>
+  {% if r.fieldtext %}<span class="log-fields">{{ r.fieldtext }}</span>{% endif %}
+  {% if r.trace %}
+  <details class="log-trace">
+    <summary>{{ r.trace|length }} 行堆栈</summary>
+    <pre>{% for line in r.trace %}{{ line }}
+{% endfor %}</pre>
+  </details>
+  {% endif %}
+</div>
+{% empty %}
+<div class="log-empty">
+  窗口内没有匹配的日志。
+  {% if filters.lv %}试试把级别放宽到「全部」{% endif %}
+  {% if filters.q or filters.logger %}，或清掉关键字{% endif %}。
+  {% if not scanned %}文件里目前没有任何记录 —— 服务刚起、或日志刚轮转过，过一会儿再看。{% endif %}
+</div>
+{% endfor %}

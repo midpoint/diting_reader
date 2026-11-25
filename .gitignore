@@ -1,0 +1,21 @@
+# 运行时产物
+data/
+reader/data/
+dist/
+build/
+
+# 本地配置（密钥）
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}{% if pg %}{{ pg.title }}{% else %}页不存在{% endif %} · 知识库{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>{% if pg %}{{ pg.title }}{% else %}页不存在{% endif %}</h2>
+    <div class="page-actions">
+      <a class="btn" href="/wiki">回知识库</a>
+      {% if pg and pg.sources %}
+      <a class="btn" href="/wiki?src={{ pg.sources.0|urlencode }}">看同源页</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% comment %}
+  ★ 双向硬锁的方向二：编译/提炼在跑时，本页的「拉入审批编辑 / 提交删除请求」
+    都要可见地灰掉。说明条放在「页是否存在」判断**之前** —— 页读不到时
+    同样要告诉人为什么按钮点不动（否则静默降级成「功能坏了」）。
+  {% endcomment %}
+  {% if mutex_msg %}
+  <div class="alert-bar is-bad mutex-bar">{{ mutex_msg }}</div>
+  {% endif %}
+
+  {% if not pg %}
+  <div class="alert-bar">
+    读不到这一页：<code>{{ asked }}</code>。
+    可能已经被删 / 改名，或者路径跑出了 <code>wiki/</code>（这里只认库目录下的 .md）。
+  </div>
+  <p class="meta">地址栏里的 <code>p=</code> 应当是页的相对路径，形如
+    <code>wiki/invest/capex.md</code>。</p>
+
+  {% else %}
+  {% if mutex_msg %}
+  <div class="alert-bar is-bad mutex-bar">{{ mutex_msg }}</div>
+  {% endif %}
+  <p class="meta">
+    域 <b>{{ pg.domain|default:"—" }}</b> · 更新 <b>{{ pg.updated|default:"—" }}</b> ·
+    置信 <span class="tag conf-{{ pg.confidence }}">{{ pg.confidence|default:"—" }}</span> ·
+    {{ pg.chars }} 字 · <code>{{ pg.page }}</code>
+    {% comment %}
+    ★ 标签（2026-11-16）：来自 frontmatter 的 tags，编译时模型建议、审批对话
+      可改。**可点** —— 点一下跳到 `/wiki?tag=` 看同标签的其它页，这是标签
+      除了「看得见」之外唯一的职能（横切聚合）。全显不截断：详情页本来就是
+      「看全一页」的地方，首页那 4 个上限是为了不挤占列表列宽。
+    {% endcomment %}
+    {% for t in pg.fm.tags %}<a class="wiki-tag" href="/wiki?tag={{ t|urlencode }}"
+       title="只看带「{{ t }}」的页">{{ t }}</a>{% endfor %}
+    <a class="meta" href="/wiki/tags">全部标签</a>
+  </p>
+
+  {% comment %}
+  ★ 内链（2026-11-11）：正文中没能对上目标页的位置不会变成 404 死链，
+    但只把说明藏在 span 的 tooltip 里太隐蔽 —— 这里给一句**可见文字**并点名
+    slug（「出错时谁会知道」）。目标入库 / 重名消除后，下次打开就自动可点。
+  {% endcomment %}
+  {% if link_missing %}
+  <div class="alert-bar">
+    本页 {{ link_missing|length }} 处内链没找到唯一的目标页：{{ link_missing|join:"、" }}。
+    这些位置仍按原样显示，没有变成死链；目标页入库后会自动变成可点的链接。
+  </div>
+  {% endif %}
+
+  {% comment %}
+  ★ 第十三步（形态 A）：正文 = 纯 polish 一段（连贯导读，措辞可轻微瑕疵）；
+    精确出处收进折叠「溯源」区，数据来自 IngestCandidate 结构化字段、
+    按 quote_from 分组，**逐条精确可查**。frontmatter candidates 是分组唯一真值。
+  ★ 清零前老页（三块 / 旧双层）整段直显并给可见说明；正文为空（结论还没重编
+    成功）也明确说出来 —— 不白屏、不静默降级、不把提示塞进正文。
+  ★ 多行注释一律 comment 标签：模板注释漏进 innerText 是第十一步踩过的坑。
+  {% endcomment %}
+  {% if body_blank %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>结论还没生成</b>
+      <span class="meta">这份草稿的结论重编还没成功；在审批里重编后这里才会有正文</span>
+    </div>
+    <div class="empty">当前没有可读的结论。下方「溯源」仍能逐条查到这页挂了哪些判断。</div>
+  </div>
+  {% elif legacy_page %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>正文</b>
+      <span class="meta">清零前的老页：沿用旧版正文直显；新编出来的页只显示一段结论</span>
+    </div>
+    <article class="report">{{ body_html|safe }}</article>
+  </div>
+  {% else %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>结论</b>
+      <span class="meta">连贯导读；每条判断的原话与出处在下面折叠的「溯源」里，逐条精确可查</span>
+    </div>
+    <article class="report">{{ body_html|safe }}</article>
+  </div>
+  {% endif %}
+
+  <details class="panel">
+    <summary>溯源 {{ trace.total }} 条（原话 / 出处 / 发布时间，按「谁说的」分组）</summary>
+    {% for g in trace.groups %}
+    <h4>{{ g.label }} {{ g.rows|length }}</h4>
+    {% for r in g.rows %}
+    <article class="cand-card">
+      <div class="cand-head"><b>{{ r.claim }}</b></div>
+      {% if r.quote %}<blockquote class="cand-quote">{{ r.quote }}</blockquote>{% endif %}
+      <div class="cand-actions">
+        <span class="meta">#{{ r.cand_id }} · {{ r.published_at|default:"发布时间未知" }} · {{ r.source }}</span>
+        {% if r.link %}<a class="btn" href="{{ r.link }}">看原文</a>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+    {% empty %}
+    <div class="empty">这页没有挂候选，也就没有可溯源的判断。</div>
+    {% endfor %}
+    {% if trace.unknown %}
+    <div class="meta">另有 {{ trace.unknown|length }} 条候选 id 已不存在或已丢弃：{{ trace.unknown|join:"、" }}</div>
+    {% endif %}
+  </details>
+
+  {% if backlink_rows %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>谁引用了我 {{ backlink_rows|length }}</b>
+      <span class="meta">每条带引用时的那句话；点页名跳过去看完整语境</span>
+    </div>
+    {% for b in backlink_rows %}
+    <div class="backlink-row">
+      <a href="/wiki/page?p={{ b.page|urlencode }}">{{ b.title }}</a>
+      {% if b.missing %}
+      <div class="meta">索引记着这页引用过，但正文里找不到引用句了，可能索引需要重建</div>
+      {% else %}
+      {% for q in b.quotes %}<blockquote>{{ q }}</blockquote>{% endfor %}
+      {% if b.more %}<div class="meta">另有 {{ b.more }} 句引用</div>{% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% comment %}
+  ★ 入库页编辑（第六步，2026-11-06）：改成**走审批**，不再手敲 textarea。
+    点「编辑此页」= 把这一页复制成一份「替换稿」草稿（frontmatter 加 edits: <slug>），
+    原页原地不动，然后自动弹出审批浮层，在里面用对话改 title / domain / tags / 正文。
+    提交时程序备份旧版 → 整页覆盖 → 重建 sources / backlinks / index。
+    ★ 为什么不再用 textarea：手改只能改正文，改不了 title/domain/tags，也不会重建
+      反链；而且「改判断」这件事本身需要留下「谁在什么时候改了什么」的边界。
+  {% endcomment %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>编辑此页</b>
+      <span class="meta">
+        拉入审批后可用对话改标题 / 领域 / 标签 / 正文；候选也可拆去别的页。
+        原页在编辑期间保持不动，提交时才覆盖
+      </span>
+    </div>
+    <form hx-post="{% url 'wiki_page_edit' %}" hx-swap="none">
+      {% csrf_token %}
+      <input type="hidden" name="page" value="{{ pg.page }}">
+      <button class="btn" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>拉入审批编辑</button>
+    </form>
+  </div>
+
+  {% comment %}
+  ★ 删除（第八步）：走的是和编辑同一条审批通路 —— 产出一份「替换稿的空形态」
+    （frontmatter 的 edits: <slug> + candidates: []），人要 commit 才真删。
+    ★ 文案必须说清两件事：① 现在只是提交请求，还没删；② 页内候选默认全部废弃。
+      删除是不可逆动作里最不可逆的一种，含糊的按钮文案比没有按钮更糟。
+    ★ 第十步：删除稿多带一份 `retire` 权威候选清单，审批浮层里可以逐条把
+      有用的判断留去别的页，剩下的才废弃。所以这里不能再说「候选会一并
+      标记为已丢弃」—— 被留走的那些并没有废弃（与工作区 / 草稿列表同口径）。
+      这是「先拆走再删」唯一可达的时机（commit 之后页删了，清单就丢了）。
+      多行注释一律 comment 标签。
+  {% endcomment %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>删除此页</b>
+      <span class="meta">
+        提交删除请求 → 在审批里确认后才真删。页内候选默认全部废弃；
+        审批浮层里可以逐条把有用的判断留去别的页，只有标记为废弃的候选才真删
+      </span>
+    </div>
+    <form hx-post="{% url 'wiki_page_delete' %}" hx-swap="none"
+          hx-confirm="删除请求会进入审批；在浮层里可逐条定候选去向，确认后这一页和标记为废弃的候选才真删。继续？">
+      {% csrf_token %}
+      <input type="hidden" name="page" value="{{ pg.page }}">
+      <button class="btn btn-danger" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>提交删除请求</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <b>来源 {{ pg.sources|length }}</b>
+      <span class="meta">
+        这条判断从哪来。点来源可以看它<b>另外</b>还影响哪些页 —— 来源变了，
+        要从这里反查该复查谁（<code>meta/sources.json</code> 就是这张表）
+      </span>
+    </div>
+    {% for s in src_rows %}
+    <div class="src-row">
+      <a class="src-chip" href="/wiki?src={{ s.id|urlencode }}">{{ s.id }}</a>
+      {% if s.others %}
+      <span class="meta">另影响 {{ s.others|length }} 页：
+        {% for o in s.others %}<a href="/wiki/page?p={{ o|urlencode }}">{{ o }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+      </span>
+      {% else %}
+      <span class="meta">没有别的页共用这个来源</span>
+      {% endif %}
+    </div>
+    {% empty %}
+    <div class="empty">这页没有 sources —— 那它迟早会变成没人能复核的断言。</div>
+    {% endfor %}
+  </div>
+
+  <details class="panel">
+    <summary>frontmatter 原文</summary>
+    <table class="cgrid">
+      <tbody>
+        {% for k, v in fm_rows %}
+        <tr><th class="w-name">{{ k }}</th><td><code>{{ v }}</code></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

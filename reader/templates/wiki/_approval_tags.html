@@ -1,0 +1,36 @@
+{% comment %}
+审批浮层②的标签行（2026-11-16，用户要求「审核页面应该有编辑 tags 的地方，
+参考微信好友 tag：输入时能选已有的」）。
+
+为什么放在标题下面：标签和标题一样是「这页是什么」的一句话，改它的动作
+和改标题同级（点一下就改），不该藏在审批对话里让人打字说「把标签改成…」。
+
+★ 交互只有三个动作：点 × 删一个 / 输入后回车加一个 / 从下拉里点一个已有的。
+  每一次都立刻落盘（POST → 换 `#tag-chips`），**没有「保存」按钮也没有草稿态**：
+  这个工作区会被 13 条渲染路径整块换掉（对话 OOB 刷新、切草稿、查相关页…），
+  任何「改了还没保存」的中间态都会在换节点时静默消失 —— 那是最难查的一类丢数据。
+★ `data-vocab` 是全库词表（`{"tag": …, "n": …}` 的 JSON，次数降序）：
+  输入时前端按子串过滤、把「已有几次」摆出来，复用才可能真的发生
+  （2026-11-16 实测真实库 95 个词里 93 个只用过一次）。
+  ★ 这份词表只在**打开/刷新工作区**时生成；本次新造的标签要等下一次渲染才进词表
+    （词表来自已入库页，草稿里的标签不算数）。
+★ 上限/长度不在前端拦（前端拦截会和后端漂）：`data-max*` 只是给输入框做提示，
+  真判据在 `wiki_agent.clean_tags`，拒了就回「未保存：最多 8 个」。
+★ 编译中（mutex_msg）输入框禁用、× 仍在但会被服务端拒（回包写明原因）——
+  按钮不灰是因为 chips 是服务端渲染的，灰一半反而让人以为标签坏了。
+{% endcomment %}
+<div class="tag-editor" id="tag-editor"
+     data-slug="{{ slug }}"
+     data-vocab="{{ tag_vocab_json }}"
+     data-max="{{ tag_max_n }}">
+  <span class="tag-label">标签</span>
+  {% include "wiki/_approval_tags_chips.html" %}
+  <span class="tag-box">
+    <input class="tag-input" type="text" autocomplete="off" spellcheck="false"
+           aria-label="添加标签"
+           placeholder="加标签：回车确认，↑↓ 选库里已有的{% if mutex_msg %}（编译中，暂不可改）{% endif %}"
+           {% if mutex_msg %}disabled{% endif %}>
+    <span class="tag-drop" hidden></span>
+  </span>
+  <span class="tag-msg" hidden></span>
+</div>

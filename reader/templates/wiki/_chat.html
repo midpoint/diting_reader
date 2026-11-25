@@ -1,0 +1,80 @@
+{% comment %}
+内容块上的对话（阶段 2.1）。锚 (source_type, source_id)，与划线/批注同一个组件位。
+
+★ 这个片段现在装在**悬浮浮窗**里（`_article_tools.html` 的 .ai-panel），不再占正文
+  版面。发送后它用 outerHTML 换掉**自己**（根节点 id = chat_id），所以浮窗不关、
+  滚动位置不动 —— 别把根节点去掉，否则 htmx 找不到 target。
+
+★ 错误写在对话区里（不是 toast）：预算用尽 / 读不到正文 / 模型报错，都需要
+  用户回头看还能看见原因。toast 几秒就没了，只剩「怎么没回复」。
+
+★ 空状态给「快捷问题」按钮而不是干巴巴一行提示：浮窗很小，用户想不出问什么时
+  最常见的就是「先总结一下」。点一下就等于替他填好并发送（花的是同一笔钱，但
+  意图明确，不是自动扣费）。
+{% endcomment %}
+<div class="wiki-chat" id="{{ chat_id }}">
+  <div class="wc-head">
+    {% comment %}
+    标题「问AI」在浮窗顶栏（_article_tools.html 的 .ai-panel-bar）里 —— 这里再写
+    一遍就是双标题（上一版截图踩过）。这一行只留说明与「清空」。
+    {% endcomment %}
+    <span class="wc-hint">只依据正文、我的划线与批注</span>
+    {% if messages %}
+    {% comment %}
+    ★ 清空也必须是真正的 <form>，按钮上直接 hx-post 会在两道关上都翻车：
+      1) 没有 csrf token ⇒ 403（页面能点、点了没反应）；
+      2) `hx-vals` 走的是 `HX-Vals` **请求头**，头只能是 latin-1 —— source_id 一旦
+         出现中文就 setRequestHeader 抛错，请求发不出去（同一个坑踩过）。
+      表单字段走 body（utf-8），两件事一起解决。
+    {% endcomment %}
+    <form class="wc-clear-form" hx-post="/wiki/chat/clear"
+          hx-target="#{{ chat_id }}" hx-swap="outerHTML"
+          hx-confirm="清空这段对话？消息会被删除，不可恢复。">
+      {% csrf_token %}
+      <input type="hidden" name="source_type" value="{{ source_type }}">
+      <input type="hidden" name="source_id" value="{{ source_id }}">
+      <button class="btn mini wc-clear" type="submit">清空</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="wc-log">
+    {% for item in messages %}
+    {% include "wiki/_wc_msg.html" with m=item.m marks=item.marks marks_undisplayed=item.marks_undisplayed show_marks=item.show_marks %}
+    {% empty %}
+    <div class="wc-empty">
+      <div class="wc-empty-tip">还没有对话。可以点下面的问题，或自己问一句：</div>
+      {% comment %}
+      ★ 文案不在这里写死：它是 `core/ingest.py` 分诊的判据（点一下发出去的话
+        不是「我敲的字」，不能当成我的判断进沉淀链）。写死两份必然漂，见
+        reader_tags.quick_asks 的注释。
+      {% endcomment %}
+      <div class="wc-chips">
+        {% load reader_tags %}{% quick_asks as chips %}{% for label, text in chips %}
+        <button class="wc-chip" type="button" data-wc-ask="{{ text }}">{{ label }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if err %}<div class="wc-err" role="alert">{{ err }}</div>{% endif %}
+
+  {% if enabled %}
+  <form class="wc-form" hx-post="/wiki/chat/send"
+        hx-target="#{{ chat_id }}" hx-swap="outerHTML"
+        hx-disabled-elt="find button" hx-indicator="#{{ chat_id }}-busy">
+    {% csrf_token %}
+    <input type="hidden" name="source_type" value="{{ source_type }}">
+    <input type="hidden" name="source_id" value="{{ source_id }}">
+    <textarea name="body" rows="2" required
+              placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <div class="wc-actions">
+      <span class="wc-busy" id="{{ chat_id }}-busy">思考中…</span>
+      <button class="btn" type="submit">发送</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="meta">对话未开启（WIKI_CHAT_ENABLED=0）</div>
+  {% endif %}
+</div>

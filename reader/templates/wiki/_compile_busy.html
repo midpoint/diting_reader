@@ -1,0 +1,25 @@
+{% comment %}
+编译中的状态条：**自己会刷新**的那一块（htmx 每 5 秒 GET `/wiki/compile/state`）。
+
+★ 只有两处会渲染它：
+  1. `_body.html` 里 `compile_run.running` 为真时（整页 / 片段重渲染）；
+  2. `views.compile_watch` 自己的轮询响应 —— 换掉的正是这个根节点本身。
+  所以：**根节点必须带轮询属性**，而且必须是唯一根节点（`outerHTML` 换的就是它）。
+  少带一次属性 = 定时器停在那里，「已跑 42 秒」永远停住、跑完了也不会自己变回来，
+  看起来和卡死一模一样。
+
+★ 这句「跑完会自动重载」是真的：`compile_watch` 在不 running 时回
+  `HX-Refresh: true`，htmx 会整页重载（草稿出现在下面「待审批」，局部换不出来）。
+★ 不写「请刷新」：让人手动刷，等于把「到底跑完没有」交给运气。
+{% endcomment %}
+<div class="compile-running" hx-get="/wiki/compile/state"
+     hx-trigger="every 5s" hx-swap="outerHTML">
+  <b>编译中</b>
+  <span class="meta">
+    {{ compile_run.started_at }} 开始，已 {{ compile_run.elapsed_text }}{% if compile_run.n %}，{{ compile_run.n }} 条候选在编{% endif %} ——
+    逐页生成，通常 1–3 分钟。这一块每 5 秒自己问一次；跑完会自动重载本页，
+    新草稿直接出现在下面「待审批」。
+    {% comment %}（「别重复点」已于 2026-11-03 删：在跑时页面根本不渲染可提交的
+      表单，只有灰按钮 —— 提醒一个点不动的东西，等于教人看废话。）{% endcomment %}
+  </span>
+</div>

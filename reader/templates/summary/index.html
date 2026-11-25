@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% load reader_tags %}
+
+{% block title %}总结{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>周期总结</h2>
+  </div>
+
+  <p class="meta">
+    窗口 <code>[前一日 {{ cfg.window_hour }}:00 → 当日 {{ cfg.window_hour }}:00)</code>，口径
+    <b>published_at</b>（非入库时间）；默认每天
+    <code>{{ cfg.hour }}:{{ cfg.minute }}</code> 编排，补救刷新后每 {{ cfg.fresh_poll }} 秒复检，
+    最多等 {{ cfg.fresh_deadline }} 分钟让 feed 变新鲜（不再固定盲等），
+    每 {{ cfg.guard }} 分钟兜底检查，{{ cfg.stale }} 分钟未推进即视为卡死重置。
+    日报落盘 <code>data/reports/daily-YYYY-MM-DD.md</code>，周报
+    <code>weekly-YYYY-MM-DD.md</code>，db 只存运行元信息。
+    {% if not cfg.enabled %}<b class="danger">日报已关闭（设置页 → 日报与总结），定时不触发；手动重跑不受限。</b>{% endif %}
+    <br>
+    周报每周 <b>{{ weekly_cfg.weekday_label }} {{ weekly_cfg.hour }}:{{ weekly_cfg.minute }}</b>
+    基于过去 7 天日报生成一次；缺历史日报立即失败并通知，
+    缺当天日报最多等 {{ weekly_cfg.retry_hours }} 小时。
+    {% if not weekly_cfg.enabled %}<b class="danger">周报已关闭（设置页 → 周报）。</b>{% endif %}
+  </p>
+
+  {% if latest.missing %}
+  <div class="alert-bar">⚠ 最近一次运行标记为完成，但报告文件不见了（{{ latest.date }}）。</div>
+  {% endif %}
+
+  {% if gaps %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>缺 {{ gaps|length }} 天的报告</b>
+      <span class="meta">
+        自动补跑只管最近 {{ cfg.lookback }} 天；这里回看 {{ cfg.gap_lookback }} 天，
+        <b>只列不跑</b> —— 每行点「补跑」才花钱
+      </span>
+    </div>
+    <div class="scroll-y">
+      <table class="cgrid">
+        <thead>
+          <tr>
+            <th>日期</th><th>状态</th><th>说明</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for g in gaps %}
+          <tr>
+            <td class="nowrap">{{ g.date|date:"Y-m-d" }}</td>
+            <td class="nowrap">
+              <span class="tag {% if g.state == 'failed' %}bad{% else %}run{% endif %}">
+                {{ g.state_label }}
+              </span>
+              {% if g.attempt > 1 %}<span class="meta">×{{ g.attempt }}</span>{% endif %}
+              {% if g.in_auto_window %}<span class="tag" title="自动补跑窗口内">自动</span>{% endif %}
+            </td>
+            <td class="meta">{{ g.error|truncatechars:120|default:"—" }}</td>
+            <td class="nowrap">
+              {% if g.in_flight %}
+                <span class="meta">运行中</span>
+              {% else %}
+                <form class="inline-form" data-async="/summary/run"
+                      data-msg="正在补跑 {{ g.date|date:'Y-m-d' }}…">
+                  {% csrf_token %}
+                  <input type="hidden" name="date" value="{{ g.date|date:'Y-m-d' }}">
+                  <input type="hidden" name="force" value="1">
+                  <button class="btn mini" type="submit">补跑</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="panel-head">
+      <b>最近 {{ rows|length }} 份报告</b>
+    </div>
+    <table class="cgrid">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>状态</th>
+          <th>规模</th>
+          <th class="num">¥</th>
+          <th class="num">调用</th>
+          <th class="num">tokens</th>
+          <th>耗时</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{% if r.kind == 'weekly' %}row-weekly{% endif %}{% if r.state == 'failed' %} row-bad{% endif %}"
+            data-kind="{{ r.kind }}">
+          <td class="nowrap">
+            {% if r.kind == 'weekly' %}<span class="tag wk">周报</span>{% endif %}
+            {% if r.has_file %}
+              <a href="{{ r.url }}">{{ r.date|date:"Y-m-d" }}</a>
+            {% else %}
+              <span class="meta" title="没有报告文件（生成失败或未完成）">{{ r.date|date:"Y-m-d" }}</span>
+            {% endif %}
+          </td>
+          <td class="nowrap">
+            <span class="tag {% if r.state == 'done' %}ok{% elif r.state == 'failed' %}bad{% else %}run{% endif %}">
+              {{ r.state_label }}
+            </span>
+            {% if r.catch_up %}<span class="tag" title="补跑">补</span>{% endif %}
+            {% if r.attempt > 1 %}<span class="meta">×{{ r.attempt }}</span>{% endif %}
+          </td>
+          <td class="nowrap" title="{{ r.size_hint }}">{{ r.size }}</td>
+          <td class="num">{{ r.cost_cny|floatformat:"-4" }}</td>
+          <td class="num">{{ r.calls }}</td>
+          <td class="num">{{ r.tokens|num }}</td>
+          <td class="nowrap">
+            {% if r.started_at and r.finished_at %}
+              {{ r.started_at|reldt }} → {{ r.finished_at|reldt }}
+            {% elif r.started_at %}
+              {{ r.started_at|reldt }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="nowrap">
+            <form class="inline-form" data-async="{{ r.run_url }}"
+                  data-msg="正在重跑 {{ r.date|date:'Y-m-d' }}…">
+              {% csrf_token %}
+              <input type="hidden" name="{{ r.run_key }}" value="{{ r.run_value }}">
+              <input type="hidden" name="force" value="1">
+              <button class="btn mini" type="submit">重跑</button>
+            </form>
+            {% if r.allow_no_cache %}
+            <form class="inline-form" data-async="/summary/run"
+                  data-msg="正在忽略缓存重跑 {{ r.date|date:'Y-m-d' }}…">
+              {% csrf_token %}
+              <input type="hidden" name="date" value="{{ r.date|date:'Y-m-d' }}">
+              <input type="hidden" name="force" value="1">
+              <input type="hidden" name="no_cache" value="1">
+              <button class="btn mini" type="submit"
+                      title="跳过 S3/S2/S1 缓存，强制重新调用模型">忽略缓存重跑</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% if r.error %}
+        <tr><td colspan="{{ ncols }}" class="errline">{{ r.error|truncatechars:300 }}</td></tr>
+        {% endif %}
+        {% empty %}
+        <tr><td colspan="{{ ncols }}" class="meta">还没有任何运行记录。到 {{ cfg.hour }}:{{ cfg.minute }} 会自动跑。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><b>分层与记账口径</b></div>
+    <ul class="hint-list">
+      <li><b>S = Summary 层，不是分级 L</b>：S3 单篇 → S2 按源 → S1 按分类 → S0 全局；
+          分级是 L0 忽略 / L1 低价值·普通 / L2 关注 / L3 重点。</li>
+      <li><b>S3 单篇压缩</b>（正文 &gt; {{ cfg.s3 }} 字）：单独一次调用，产出 100–200 字摘要 → 记在该 feed 上。</li>
+      <li><b>S2 按源汇总</b>（单源 ≥ {{ cfg.s2 }} 条）：同主题合并去重 → 记在该 feed 上。</li>
+      <li><b>S1 按分类汇总</b>（分类内 ≥2 源或 ≥5 条）：跨源合并 → 记在该分类上。</li>
+      <li><b>S0 全局合成</b>：整份日报 → 记为<b>公共开销</b>（不分摊到任何 feed/分类）；<b>S0 不缓存</b>。</li>
+      <li>单源条目过多（&gt; {{ cfg.feed_max }} 条）时只丢 L1：每源保留最近 {{ cfg.feed_l1_keep }} 条，
+          <b>L2/L3 一条不丢</b>；只影响日报素材，不标已读、不删源。</li>
+      <li>先规则后 LLM：转贴 / <code>^回复@</code> / 标题流三类在进模型前先<b>压成一句话</b>
+          （是压正文，<b>与级别无关</b>），调用量约为全量的 1/3。
+          长转贴（正文 &gt; 120 字）不压 —— 该砍的是噪声，不是信息。</li>
+      <li><b>分级 L0 的条目不进总结</b>（已被"标已读"过滤），fail-open 落 L0 的也不进。</li>
+      <li>引用只带 <code>[源名 · 时分]</code>；报告头部给<b>要点引用</b>（每个要点是否点得回原文），不再堆一整段来源索引。</li>
+      <li>S3/S2/S1 默认按输入指纹复用缓存（TTL {{ cfg.cache_ttl }} 天）；输入变了（新文章 / 分级调整 / prompt 改动）自动重跑。
+          详情页可「忽略缓存重跑」。</li>
+      <li>预算用尽或模型全挂时自动降级为<b>规则版报告</b> —— 统计与异常段一定在，内容退化为条目清单。</li>
+      <li><b>日报与周报在同一条列表里</b>：按截至日倒序，同一天周报在上。两者的运行记录在
+          <code>SummaryRun</code> 里用 <code>kind</code> 区分（共用 id 池），所以周报的钱与 token
+          也和日报一样按行记账；<b>失败的周报照样列在这里、照样能重跑</b>。</li>
+      <li><b>「规模」列两类口径不同</b>：日报是「当天条目数 · 当天原始异常数」；周报是
+          「拼进来的日报份数 · 7 天原始异常之和」。跨度不同，别拿周报的数和单日直接比。</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

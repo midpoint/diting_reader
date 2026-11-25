@@ -1,0 +1,79 @@
+{% load reader_tags %}<ul class="tree">
+  <li class="node root {% if filters.sel == 'all' %}active{% endif %}">
+    <div class="node-row">
+      <span class="spacer"></span>
+      <a href="/?sel=all&{{ qs }}" hx-get="/hx/entries?sel=all&{{ qs }}"
+         hx-target="#entry-list" hx-push-url="true">全部文章</a>
+      {% if total_unread %}<span class="count">{{ total_unread }}</span>{% endif %}
+    </div>
+  </li>
+  <li class="node star {% if filters.sel == 'starred' %}active{% endif %}">
+    <div class="node-row">
+      <span class="spacer"></span>
+      <a href="/?sel=starred&{{ qs }}" hx-get="/hx/entries?sel=starred&{{ qs }}"
+         hx-target="#entry-list" hx-push-url="true">★ 星标文章</a>
+    </div>
+  </li>
+  {% for cat in tree %}
+  <li class="node cat {% if cat.unread %}has-unread{% endif %} {% if sel_kind == 'cat' and sel_id == cat.id %}active{% endif %}"
+      data-cat="{{ cat.id }}"
+      data-ord="{% if cat.layer_ordered %}1{% else %}0{% endif %}"
+      data-empty="{% if cat.feeds %}0{% else %}1{% endif %}">
+    <div class="node-row">
+      {% comment %}★ 手柄才是拖动的起点（分类行 / 目录行**不整行可拖**）：行里还有链接
+        和展开箭头，290px 宽的侧栏整行拖一不留神就改了一层的顺序。手柄常驻占位、
+        只在悬停时显形，避免"出现→行变宽→文字抖动"。{% endcomment %}
+      <span class="grip" draggable="true" title="拖动重排分类顺序">⠿</span>
+      <span class="arrow" data-toggle="cat-{{ cat.id }}" title="展开 / 收起">▼</span>
+      <a href="/?sel=cat:{{ cat.id }}&{{ qs }}" hx-get="/hx/entries?sel=cat:{{ cat.id }}&{{ qs }}"
+         hx-target="#entry-list" hx-push-url="true" draggable="false">{{ cat.title }}</a>
+      {% if cat.has_error %}
+        <span class="warn" title="{% for f in cat.error_feeds %}{{ f.title }}：{{ f.error_msg }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}">{% include "reader/_warn_icon.html" %}</span>
+      {% endif %}
+      {% if cat.unread %}<span class="count">{{ cat.unread }}</span>{% endif %}
+    </div>
+    <ul class="children" id="cat-{{ cat.id }}">
+      {% comment %}
+      ★ 虚拟分组（阅读页专属，见 core/readergroups.py）：
+        分类 →（分组）→ feed。分组是「叠加索引」不是「替换树」——
+        未分组的 feed 仍然原样挂在分类下（不额外造一个"未分组"标题行）。
+        判据：`f.group_id` 由 readergroups.decorate() 挂上，0 = 未分组。
+      ★ 这一段渲染用 `cat.root_feeds`（已按手动顺序 + 未读优先排好），
+        不用 `cat.feeds` —— 后者是全量统计口径，顺序不该被侧栏拖动影响。
+      {% endcomment %}
+      {% for g in cat.groups %}
+      <li class="node group {% if g.unread %}has-unread{% endif %} {% if sel_kind == 'group' and sel_id == g.id %}active{% endif %}"
+          data-group="{{ g.id }}"
+          data-ord="{% if g.layer_ordered %}1{% else %}0{% endif %}">
+        <div class="node-row">
+          <span class="grip" draggable="true" title="拖动重排本分类下的目录顺序">⠿</span>
+          <span class="arrow" data-toggle="grp-{{ g.id }}" title="展开 / 收起">▼</span>
+          <a href="/?sel=group:{{ g.id }}&{{ qs }}" hx-get="/hx/entries?sel=group:{{ g.id }}&{{ qs }}"
+             hx-target="#entry-list" hx-push-url="true" title="分组：{{ g.title }}" draggable="false">{{ g.title }}</a>
+          {% if g.has_error %}
+            <span class="warn" title="{% for f in g.error_feeds %}{{ f.title }}：{{ f.error_msg }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}">{% include "reader/_warn_icon.html" %}</span>
+          {% endif %}
+          {% if g.unread %}<span class="count">{{ g.unread }}</span>{% endif %}
+        </div>
+        <ul class="children grp" id="grp-{{ g.id }}">
+          {% for f in g.feeds %}{% include "reader/_tree_feed.html" %}{% endfor %}
+          {% if not g.feeds %}
+          <li class="node hint-row">
+            <div class="node-row"><span class="spacer"></span>
+              <span class="hint">空分组（把源移进来）</span></div>
+          </li>
+          {% endif %}
+        </ul>
+      </li>
+      {% endfor %}
+      {% for f in cat.root_feeds %}{% include "reader/_tree_feed.html" %}{% endfor %}
+      {% if not cat.feeds and not cat.groups %}
+      <li class="node hint-row">
+        <div class="node-row"><span class="spacer"></span>
+          <span class="hint">空分类（右键添加 feed / 移除）</span></div>
+      </li>
+      {% endif %}
+    </ul>
+  </li>
+  {% endfor %}
+</ul>

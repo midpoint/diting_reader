@@ -1,0 +1,58 @@
+name: build-windows
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build portable zip
+        run: python scripts/build_windows_portable.py --version "${{ env.VERSION }}"
+
+      - name: Show artifacts
+        shell: bash
+        run: ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diting-reader-windows-${{ env.VERSION }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 谛听阅读器 v${{ env.VERSION }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/diting-reader-windows-${{ env.VERSION }}.zip
+            dist/diting-reader-windows-${{ env.VERSION }}.zip.sha256

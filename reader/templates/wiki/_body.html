@@ -1,0 +1,440 @@
+{% comment %}
+wiki 主体片段。**两处渲染**：/wiki 整页（index.html 里 include）与审批 / 退稿后的
+htmx 替换（hx-target="#wiki-body" hx-swap="outerHTML"）。
+所以：单一根节点 #wiki-body、只用 _ctx() 给的变量、不引用页面级标题。
+{% endcomment %}
+<div id="wiki-body">
+  {% comment %}
+  ★ CSRF token 必须始终存在于页面（2026-11-09 修复）：编译在跑时表单不渲染，
+    但测试 / 前端脚本仍需要从 cookie 读 token。Django 的 CSRF cookie 只在模板包含
+    {% csrf_token %} 时设置，所以这里放一个隐藏的 input 保证 cookie 始终可用。
+  {% endcomment %}
+  <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+
+  {% comment %}
+  第十一步首页重排：**产品在前，机器在后**。
+    状态行（唯一主动触发点 + 花完钱那句话） → 已入库页表（domain 地图，主体）
+    → 断链待处理（有才出现） → 回看区（默认收起）。
+  #ingest / #cands 两个「生产流水线中间态」面板已下线；候选改到
+  /wiki/candidates 只读查询页看，提炼过程本身对用户完全不可见。
+  2026-11-09：工作台（首页草稿卡）也下线 —— 裁决唯一入口是审批浮层。
+  ★ 注意保留唯一根节点 #wiki-body（htmx 的 hx-target 全靠它）。
+  {% endcomment %}
+  {% comment %}
+  ★ 编译入口是**独立面板**（2026-11-05 候选免审）。原先它被两层 status 条件
+    包在「已处理候选」面板里：外层看有没有已处理候选、内层看 accepted 计数。
+    候选免审后没人再点「采纳」⇒ accepted 恒为 0、已处理区只剩丢弃项 ⇒
+    两层都为假 ⇒ **整个编译按钮静默消失**（页面 200、日志干净、点都没得点）。
+    这就是「兜底分支安静骗人」：编译入口必须始终渲染，亮不亮只认「还有没有活」
+    （待编译候选 compile_backlog.todo + 新痕迹 new_trace_count，2026-11-09 起
+    新痕迹也是活：这枚按钮是提炼+编译一条龙），跟 status 计数脱钩。
+    ★ 也不能放进 details 里：花钱按钮藏起来不会省钱，只会让人找不到；
+      放进 summary 则会和折叠开关抢点击。
+  {% endcomment %}
+  <div class="panel" id="compile">
+    {% comment %}
+    ★ 这一块回答的是「**还有没有活**」，不是「我采纳了多少条」（2026-11-03）。
+      `ingest_stats.accepted` 是 status 口径，只增不减：36 条全编完了它还是 36，
+      按钮依旧亮着，点下去 0 元 0 页 + 事后一句「都已经编译过了」。这个数字于是
+      变成噪音 —— 点一次是空的，人下次就不点了；等真有 26 条待编译时，人也以为
+      又是空的。所以「能不能编译」必须问产物口径（`compile_backlog.todo`），
+      和真正花钱那条路共用同一份判据（`core.ingest.compile_backlog`）。
+    ★ 没活的时候按钮 **disabled** 而不是隐藏：按钮突然消失，人会怀疑是不是坏了 /
+      权限没了；灰着＋一句原因，位置固定、意思明确。
+    ★ 判据写 `compile_backlog.todo == 0` 而不是 `{% if not compile_backlog.todo %}`
+      —— 2026-11-03 当场踩到：dev server 用 `--noreload` 跑着旧 Python，模板已经是
+      新的，`compile_backlog` 在上下文里**不存在**，Django 把未定义变量当成空值，
+      于是 `not 空` = 真 → 悄悄走进「都已变成页」分支：HTTP 200、没有报错、日志干净，
+      而页面上明明 36 条里有 26 条没编译。这就是「兜底分支安静骗人」。
+      写成 `== 0` 之后，未定义（''）不等于 0 → 落到「有活」分支，宁可多一个可点的
+      按钮（点一次最多被告诉没事可做），也不要**静默把所有编译入口关掉**。
+    {% endcomment %}
+    <div class="panel-head">
+      {% comment %}
+      ★ 编译在跑时显示「编译中」，否则显示「待编译」（2026-11-09 修复数字矛盾）。
+        原先无论编译是否在跑都显示「N 条待编译」，但编译在跑时实际上有 N 条正在编译，
+        不是「待编译」—— 两个数字放一起让人困惑。现在口径统一：running 时显示「编译中」，
+        空闲时显示「待编译」。
+      {% endcomment %}
+      {% if compile_run.running %}
+      <b>编译中 · {{ compile_run.n }} 条</b>
+      {% elif stats.drafts %}
+      <span class="meta">编译 · {{ compile_backlog.todo }} 条待编译</span>
+      {% else %}
+      <b>编译 · {{ compile_backlog.todo }} 条待编译</b>
+      {% endif %}
+      {% if stats.drafts %}
+      {% comment %}
+      ★ 审批浮层入口（第五步 5a）：只在有草稿时出现。openModal 拉 /wiki/approval
+        片段；2026-11-09 起裁决全部在浮层里做（对话改分组 / 单页退稿 / 整批入库），
+        首页不再有并行草稿卡。
+      ★ 编译在跑时灰掉（2026-11-09 修复）：互斥锁会挡审批操作，按钮亮着点了也被拒，
+        不如直接禁用并说明原因。
+      {% endcomment %}
+      {% if compile_run.running %}
+      <button class="btn" type="button" disabled
+              title="编译进行中，跑完才能审批">打开审批浮层</button>
+      {% else %}
+      <button class="btn" type="button" onclick="openModal('/wiki/approval')">打开审批浮层</button>
+      {% endif %}
+      {% endif %}
+      {% comment %}
+      ★ 最外层先问「现在有没有一份在跑」（2026-11-03，用户报：点完编译立刻切到
+        「开销」页再切回来，按钮又能点了 —— 会点第二次）。
+        前端 `hx-disabled-elt` 只在**当前这份 DOM** 里有效：一切页、一刷新，禁用就
+        没了。而「有一份在跑」是服务端的事实（`core.ingest.compile_state`），
+        所以这一支必须在整个页面渲染时就判出来，不能等点下去才知道。
+      ★ 这一支要放在「没活可干」之前：编译在跑时 `todo` 可能还大于 0（草稿还没
+        落盘），走下面那支会给出一个**可点的按钮**，正是要修的毛病。
+      ★ 灰着而不是藏起来：按钮消失会让人以为功能没了 / 出错了。
+      {% endcomment %}
+      {% if compile_run.running %}
+      <span class="meta">
+        编译进行中：{{ compile_run.started_at }} 开始，已 {{ compile_run.elapsed_text }}{% if compile_run.n %}，{{ compile_run.n }} 条候选待编{% endif %} —— 逐页生成，通常 1–3 分钟
+      </span>
+      <button class="btn" type="button" disabled
+              title="上一次编译还在跑；跑完这块会自己变回可点">编译中…</button>
+      {% elif stats.drafts %}
+      {% comment %}
+      ★ 有草稿待审批 → 禁用编译（2026-11-09 用户澄清）：审批未完成时不该开新一轮
+        编译，否则草稿越堆越多、审批上下文被打散。原「改动 E」的暂停逻辑是对的，
+        问题出在编译**过程中**草稿分批产生时也被阻止（那是 compile_run.running 的
+        职责，不是 approval_active 的）。现在两者分开：running 挡编译中，drafts 挡
+        编译后待审批。
+      {% endcomment %}
+      <span class="meta">
+        {{ stats.drafts }} 份草稿待审批 —— 先裁决完再编下一批
+      </span>
+      <button class="btn" type="button" disabled
+              title="有未审批的草稿，先完成审批再编译">编译成草稿</button>
+      {% elif compile_backlog.todo == 0 and new_trace_count == 0 %}
+      {% comment %}
+      ★ 「没活」= 既没有待编译候选、也没有新痕迹（2026-11-09）。只有待编译
+        候选才算活是错的：这枚按钮是「提炼+编译」一条龙，新痕迹本身也是活 ——
+        候选全编完时把按钮灰掉，新痕迹就永远提炼不了（流水线卡死）。
+      ★ 有草稿待审批时按钮灰着（同日用户澄清）：审批未完成时不该开新一轮
+        编译，否则草稿越堆越多、审批上下文被打散。
+      {% endcomment %}
+      <span class="meta">
+        {% if compile_backlog.accepted == 0 %}
+        还没有候选，也没有新痕迹 —— 读书时划线、批注，痕迹攒出来这里就能点
+        {% else %}
+        这 {{ compile_backlog.accepted }} 条候选都已变成页了（草稿在 .drafts/ 待审批，或已入库到
+        wiki/）—— 现在没有可编译的东西
+        {% endif %}
+      </span>
+      <button class="btn" type="button" disabled
+              title="没有待编译的候选；新提炼的候选会重新点亮这个按钮">编译成草稿</button>
+      {% else %}
+      <span class="meta">
+        {% if compile_backlog.skipped %}其中 {{ compile_backlog.skipped }} 条已变成页，{% endif %}
+        {% if compile_backlog.todo %}<b>{{ compile_backlog.todo }} 条待编译</b> · {% endif %}
+        {% if new_trace_count %}<b>{{ new_trace_count }} 处新痕迹</b>会先提炼成候选 · {% endif %}编译 = 按概念分组 → 每页生成 → 出草稿（花 wiki 池的钱，结果进「审批浮层」）
+      </span>
+      {% comment %}
+      ★ 编译是全站最慢的花钱动作（多页逐个生成，1–3 分钟才回来）。不给「正在跑」的
+        信号，人会以为没点上、再点一次 —— 而每次点击都是一整轮模型调用。
+        两道闸，各管一件事：
+          1. `hx-disabled-elt="find button"`：请求期间按钮**真的禁用**（.btn:disabled
+             有灰化样式，不是「点了没反应」那种假死）；
+          2. `hx-indicator`：按钮旁冒出「编译中…」，人知道在等什么、等多久。
+        ★ 指示器用自定义类 `compile-busy` 而不是 htmx 自带的 `.htmx-indicator`：
+          后者的默认样式是 `opacity:0`（**占着位置但看不见**），会把 panel-head
+          撑出一块空白；自定义类才能做到「平时不占位、跑起来才出现」。
+        ★ 跨标签页的并发前端管不了（只管得住一个页面），由 core 里的编译锁兜。
+      {% endcomment %}
+      <form class="inline-form" hx-post="/wiki/compile"
+            hx-target="#wiki-body" hx-swap="outerHTML"
+            hx-disabled-elt="find button" hx-indicator="find .compile-busy">
+        {% csrf_token %}
+        <button class="btn" type="submit">编译成草稿</button>
+        <span class="meta compile-busy">编译中…（逐页生成，通常 1–3 分钟）</span>
+      </form>
+      {% endif %}
+          <span class="meta">{{ pending_decision }} 待你裁决 · {{ new_trace_count }} 处新痕迹</span>
+      <a class="btn" href="/wiki/candidates" title="只读翻看全部候选，不做审批">候选查询</a>
+    </div>
+
+    {% comment %}
+    ★ 提炼对用户隐身之后，「花完钱那句话」是唯一可见出口：原来它挂在 #ingest
+      面板里，删面板会让它一起静默消失（第十一步源码核查抓到的三处冲突之一）。
+      这里上移到状态行，保留 .alert-bar 结构 ⇒ 单测 / e2e 认的锚点不变。
+    {% endcomment %}
+    {% if ingest_msg %}
+    <div class="alert-bar{% if not ingest_ok %} is-bad{% endif %}">{{ ingest_msg }}</div>
+    {% endif %}
+    {% if not ingest_enabled %}
+    <div class="alert-bar">提炼未开启（<code>WIKI_INGEST_ENABLED=0</code>）</div>
+    {% endif %}
+    {% comment %}
+    ★ 双向硬锁的方向二：编译/提炼在跑时，审批与编辑按钮可见地灰掉，并说明原因。
+      服务端 `_compile_running_guard()` 与这里共用同一句人话，不写第二套口径。
+    {% endcomment %}
+    {% if mutex_msg %}
+    <div class="alert-bar is-bad mutex-bar">{{ mutex_msg }}</div>
+    {% endif %}
+    {% comment %}
+    ★ 写动作失败的统一出口（2026-11-09）：草稿卡下线后 err_slug 没有卡可挂，
+      错误不能再静默消失。浮层内的失败由浮层自己显示，这里兜首页 htmx 路径。
+    {% endcomment %}
+    {% if err %}
+    <div class="alert-bar is-bad">未生效：{{ err }}</div>
+    {% endif %}
+    {% comment %}
+    ★ 编译中的自查询（2026-11-03）。上面那支只保证「重新渲染时按钮是灰的」，
+      管不了「人一直停在这一页」：跑完了页面不会自己知道，按钮于是一直灰着 ——
+      看起来和「卡死了」一模一样，只能靠人手动刷新去猜。
+      所以这一块每 5 秒问一次 `/wiki/compile/state`，替掉自己：
+        · 还在跑 → 回它自己（顺便把「已跑多久」往前推）；
+        · 跑完了 → 端点回 `HX-Refresh: true`，htmx 整页重载，草稿和新按钮一起端上来。
+      ★ 只在 running 时渲染这块，空闲时页面上没有任何定时请求。
+      ★ 轮询属性写在片段自己的根节点上（`_compile_busy.html`）：这里是
+        `hx-swap="outerHTML"`，被换掉的就是那个根节点 —— 属性写在外层包一层的
+        div 上，换一次之后定时器就跟着外层一起没了（只在第一轮有效）。
+    {% endcomment %}
+    {% if compile_run.running %}
+      {% include "wiki/_compile_busy.html" %}
+    {% endif %}
+    {% comment %}
+    ★ 「上次没收尾」必须说出来（2026-11-03）。状态文件在、编译锁却是空的，说明
+      上一份编译没走完就没了（进程被 kill / 服务重启 / 机器休眠断连）——
+      这时**放行**（不能让人永远点不动），但不能静默：不说的话，人只会觉得
+      「这次编译又没结果」，然后再点一遍，原因永远没人知道。
+    {% endcomment %}
+    {% if compile_run.aborted %}
+    <div class="alert-bar">
+      上次编译（{{ compile_run.aborted.started_at }} 开始）没有正常收尾 —— 它没留下结果，
+      也没留着一把锁（进程多半被中断或服务重启过）。<b>已经放行</b>：现在可以重新点，
+      不必等；只是被中断的那一轮花的钱不会退。
+    </div>
+    {% endif %}
+    {% if compile_retry_will_fail %}
+    <div class="alert-bar">
+      这批待编译的就是上次全被拒的那 {{ compile_backlog.todo }} 条 —— 再点一次会以同样的理由被拒。
+      先改候选（比如 claim 里的数字要能在原文里找到），别只重复点。
+    </div>
+    {% endif %}
+  </div>
+  {% if src %}
+  <div class="alert-bar">
+    正在按来源筛选：<code>{{ src }}</code> 影响 {{ pages_total }} 页
+    —— 来源变了就复查这几页（这就是反向映射的用处）。
+    <a href="/wiki">看全部</a>
+  </div>
+  {% endif %}
+  <div class="panel">
+    <div class="panel-head">
+      <b>已入库 {{ pages_total }}{% if tag or src %}<span class="meta"> / 共 {{ pages_all_total }}</span>{% endif %}</b>
+      {% comment %}
+        ★ 筛选状态必须**写出来**（2026-11-16）：`?tag=` 与 `?src=` 是两条不同的
+          过滤，页面长得一模一样。不说出来的话，「怎么只剩 7 页了」会被当成丢页。
+        ★ 两个清除链接互相保留对方的参数：同时用着两重过滤时，清掉一个不该
+          把另一个也清掉（那会让人以为筛选失灵）。
+      {% endcomment %}
+      {% if tag %}
+        <span class="meta">标签「<b>{{ tag }}</b>」<a href="/wiki{% if src %}?src={{ src|urlencode }}{% endif %}">× 清除标签</a></span>
+      {% elif src %}
+        <span class="meta">来源「<b>{{ src }}</b>」<a href="/wiki">× 清除来源</a></span>
+      {% else %}
+        <span class="meta">按域软分区存放（域是受控分类，单继承）；标签是横切补充，可多值 · <a href="/wiki/tags">标签总览</a></span>
+      {% endif %}
+    </div>
+
+    {% for g in groups %}
+    <div class="dom-block">
+      <h3 class="dom-head">{{ g.domain|default:"（未分域）" }}
+        <span class="meta">{{ g.pages|length }} 页</span>
+      </h3>
+      <table class="cgrid">
+        <thead>
+          {% comment %}
+            ★ 2026-11-16 用户定：来源列意义不大，换成标签列。
+              依据（真实库核对）：sources 是 `entry:7703` / `report:daily-2026-10-30`
+              这类 id，单页最多 9 个 —— 一列 chip 全是噪声，`entry:7703` 在一行
+              里既不说明「讲了什么」，也没法记住；而标签是人自己看过一遍收敛出来
+              的词，且 2026-11-16 起可点（`?tag=` 真过滤）。
+            ★ 溯源没有消失，只是**降级**：格内「N 源」一行 + hover 看全，详情页
+              仍把每个来源做成链接（`?src=` 反查同源页照旧能用）。
+              别把「列表里不显示 chip」当成「反向映射下线了」。
+          {% endcomment %}
+          <tr><th class="w-page">页</th><th class="w-upd">更新</th><th class="w-conf">置信</th><th class="w-tags">标签</th></tr>
+        </thead>
+        <tbody>
+          {% for p in g.pages %}
+          <tr>
+            <td>
+              {% comment %}
+                ★ slug 只是存储标识，不进列表可见文字：链接走 p.page、消歧走 summary、
+                筛选走 sources，显示它没有任何职能；真实库 32 页标题全不重名，
+                而 slug 平均 27 字符、比中文标题长近一倍，纯属视觉噪音。
+                降级为 <a> 的 title（hover / 排查时仍可见）。判据见 verify_wiki.py
+                「slug 不进可见文字」与 e2e_wiki_read.js，别再加回可见区。
+              {% endcomment %}
+              <a href="/wiki/page?p={{ p.page|urlencode }}"
+                 title="{{ p.slug }}.md">{{ p.title }}</a>
+              <span class="meta">{{ p.chars }} 字</span>
+              {% if p.sources %}<span class="meta" title="来源：{{ p.sources|join:'、' }}">· {{ p.sources|length }} 源</span>{% endif %}
+            </td>
+            <td class="nowrap">{{ p.updated|default:"—" }}</td>
+            <td><span class="tag conf-{{ p.confidence }}">{{ p.confidence|default:"—" }}</span></td>
+            <td class="tag-cell">
+              {% comment %}
+                ★ 标签可点（2026-11-16 起）：`?tag=` 已在 `_ctx` 里真过滤，点一下
+                  就是「只看带这个词的页」。上一版写的是「faceted 筛选还没做，
+                  做成链接就是点一下 404 的空壳」—— 那句现在作废，判据见
+                  verify_wiki.py 的 R 段（chip 必须是 `<a>`，不是 `<span>`）。
+                ★ 最多显示 4 个、超出给「+N」：页里最多能存 8 个（写入时 [:8]），
+                  一排 8 个会把「更新 / 置信」挤出屏幕。截断要说出口 ——
+                  所以「+N」本身也是链接，点进详情页看全（不是在原地消失）。
+              {% endcomment %}
+              {% for t in p.tags|slice:":4" %}<a class="wiki-tag" href="/wiki?tag={{ t|urlencode }}"
+                 title="只看带「{{ t }}」的页">{{ t }}</a>{% empty %}<span class="meta">—</span>{% endfor %}
+              {% if p.tags|length > 4 %}<a class="meta tag-more"
+                 href="/wiki/page?p={{ p.page|urlencode }}"
+                 title="这一页还有 {{ p.tags|length|add:"-4" }} 个标签，进详情页看全">+{{ p.tags|length|add:"-4" }}</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% empty %}
+    {% comment %}
+      ★ 空结果要**分因**（2026-11-16）：`?tag=` 筛出 0 页有两种完全不同的原因 ——
+        「库里没页」和「库里有页但没页带这个词」。混成一句「还没有入库的页」
+        会让人以为数据丢了（真实场景：刚在审批页把标签改掉，刷新还是旧链接）。
+    {% endcomment %}
+    <div class="empty">
+      {% if tag %}
+        {% if pages_all_total %}没有页带「{{ tag }}」这个标签了（库里共 {{ pages_all_total }} 页，可能刚在审批页改掉了）。
+        {% else %}库还是空的。{% endif %}
+        <a href="/wiki">← 回到全部 {{ pages_all_total }} 页</a>
+      {% elif src %}
+        这个来源还没有任何页引用它（或者页的 frontmatter 里 sources 写错了）。
+      {% else %}还没有入库的页。等上面第一份草稿「通过」，它就会出现在这里。{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% comment %}
+  ★ 工作台已下线（2026-11-09 用户拍板）：草稿裁决全部在审批浮层（对话改分组 /
+    单页退稿 / 整批入库），首页那排草稿卡是过时的并行路径 —— 同一件事两个入口，
+    口径必漂。断链面板从工作台里拿出来独立渲染：它是全站唯一断链决断处，
+    且独立 panel 不折叠 ⇒ e2e_wiki_relink.js 读 innerText 不再受折叠影响。
+  {% endcomment %}
+  {% comment %}
+  第九步：断链清单。**能自动的已经自动做成草稿了**，这里只剩需要人定方向的。
+  ★ 判据写 relink_ask.has_items（显式布尔）而不是「变量是否为空」：上下文变量
+    万一缺失，后者会静默走进「没有待决项」分支，人永远看不到还有断链要处理。
+  ★ 两个动作都要有出口：「改指向 / 降级」真落 edits 补链草稿。
+  ★ 第十步：「先拆走再删」已从这里**下线**（本就是个假按钮）。该动作真正的
+    时间窗口是删页提案阶段（页还在、权威候选清单还在），那里逐条定候选去向。
+    不悄悄删掉一个曾经承诺过的动作：下面用常驻可见文字写明下线原因与替代路径。
+  ★ 多行注释一律用 comment 标签：{# #} 只吃单行，换行后整段会被原样渲染出来
+    （第五步 5a 就漏过一次，21 条断言全绿、只有真浏览器截图看得见）。
+  {% endcomment %}
+  {% if relink_ask.has_items %}
+  <div class="panel relink-panel" id="relink">
+    <div class="panel-head">
+      <b>断链待处理 {{ relink_ask.ask|length }} 处</b>
+      <span class="meta">能自动补的已经补成草稿；下面这些需要你定方向，点一下就生成补链稿</span>
+    </div>
+
+    {% comment %}
+    ★ 动作失败时 `err` 没有 err_slug（不是某张草稿的错）—— 2026-11-09 起统一
+      由状态行下方那条 `if err` 出口显示，这里不再单挂（同一句错误不出现两遍）。
+    {% endcomment %}
+
+    {% for a in relink_ask.ask %}
+    <article class="relink-row">
+      <div class="relink-head">
+        <code>[[{{ a.target }}]]</code>
+        <span class="meta">
+          {{ a.referrers|length }} 页链向它 ·
+          {% if a.reason == "deleted" %}这页刚被删除，别的页还引用它的结论
+          {% else %}库里有多个相近的页，程序不替你猜{% endif %}
+        </span>
+      </div>
+      <div class="relink-actions">
+        {% if a.candidates %}
+        <form class="inline-form" hx-post="/wiki/relink/apply"
+              hx-target="#wiki-body" hx-swap="outerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="target" value="{{ a.target }}">
+          <input type="hidden" name="action" value="retarget">
+          <input type="hidden" name="slug" value="{{ a.candidates.0 }}">
+          <button class="btn mini" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>改指向 {{ a.candidates.0 }}</button>
+        </form>
+        {% else %}
+        <button class="btn mini" type="button" disabled
+                title="库里没有相近的页可以指向">改指向</button>
+        {% endif %}
+        <form class="inline-form" hx-post="/wiki/relink/apply"
+              hx-target="#wiki-body" hx-swap="outerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="target" value="{{ a.target }}">
+          <input type="hidden" name="action" value="demote">
+          <button class="btn mini" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>降级为纯文本</button>
+        </form>
+        <div class="meta retire-hint">
+          「先拆走再删」已下线：它属于<b>删页提案阶段</b>（页还在时逐条定候选去向），
+          这里已是整批入库之后，页删了、权威候选清单不可达。
+          若结论还要留，请从 <code>.drafts/.merged/</code> 恢复该页再重新发起删除。
+        </div>
+      </div>
+      <div class="meta">还链向它：{{ a.referrers|join:"、" }}</div>
+    </article>
+    {% endfor %}
+
+    {% if relink_ask.blocked %}
+    <div class="alert-bar is-bad">
+      有 {{ relink_ask.blocked|length }} 页没能自动补链：
+      {% for b in relink_ask.blocked %}<code>{{ b.page }}</code>（{{ b.why }}）{% if not forloop.last %}、{% endif %}{% endfor %}
+      —— 断链仍在，别当成已经处理完。
+    </div>
+    {% endif %}
+    {% if relink_ask.guard_errors %}
+    <div class="alert-bar is-bad">
+      一致性守卫未通过：{{ relink_ask.guard_errors|join:"；" }}
+      —— 提示没有被擦掉，是内容真的还没对上。
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  <details class="panel" >
+    <summary class="panel-head">
+      <b>最近操作</b>
+      <span class="meta">来自 <code>log.md</code>，格式固定 <code>## [日期 时间] 动作 | 对象</code></span>
+    </summary>
+    <div class="scroll-y">
+      <table class="cgrid wiki-log">
+        <thead><tr><th>时间</th><th>动作</th><th>对象</th></tr></thead>
+        <tbody>
+          {% for r in log_rows %}
+          <tr>
+            <td class="meta">{{ r.date }} {{ r.time }}</td>
+            <td><span class="tag">{{ r.action }}</span></td>
+            <td><code>{{ r.target }}</code></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" class="meta">还没有操作记录。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  
+  </details>
+  <details class="panel" id="schema">
+    <summary class="panel-head">
+      <b>页面规范</b>
+      <span class="meta">
+        来自 <code>schema.md</code> —— 这就是给编译器的说明书，改了它下一轮编译立刻按新规范走
+      </span>
+    </summary>
+    {% if schema_html %}
+    <article class="report">{{ schema_html|safe }}</article>
+    {% else %}
+    <div class="empty">没读到 <code>schema.md</code>（首次访问会自动写出种子文件，刷新一下）。</div>
+    {% endif %}
+  
+  </details>
+</div>

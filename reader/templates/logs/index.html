@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}日志{% endblock %}
+
+{% comment %}
+日志页：实时看阅读器在做什么。
+★ 这是个**纯只读**页面：不动数据库、不碰 Miniflux、不调 LLM，刷新再勤也没有副作用。
+★ 自动刷新用 htmx 轮询 /logs/rows（该端点已在 settings.LOG_IGNORE_PATHS 里排除，
+  否则日志页会把自己的请求写成日志，越看越多）。
+{% endcomment %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>运行日志</h2>
+    <div class="page-actions">
+      {% for key, info in files.items %}
+      <a class="btn {% if filters.file == key %}primary{% endif %}"
+         href="/logs?file={{ key }}&n={{ filters.n }}"
+         title="{{ info.path }}{% if info.exists %}（{{ info.size_h }}，最后写入 {{ info.mtime_h }}）{% else %}（还没生成）{% endif %}">
+        {{ info.name }}{% if info.exists %} <span class="meta">{{ info.size_h }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <p class="meta">
+    级别约定：<b>DEBUG</b> 高频细节｜<b>INFO</b> 状态变化（任务起止、开关、启动横幅）｜
+    <b>WARNING</b> 可恢复异常（重试、fail-open、慢请求、4xx）｜<b>ERROR</b> 要人介入（崩溃、5xx）。
+    文件里默认收全量（含 DEBUG），屏幕默认只看 INFO 以上 —— 分级用 <code>LOG_LEVEL</code> /
+    <code>LOG_FILE_LEVEL</code> 调。
+  </p>
+
+  <div class="log-bar">
+    <div class="log-levels">
+      {% for c in level_chips %}
+      <a class="chip {% if filters.lv == c.key %}on{% endif %} lv-{{ c.key|lower|default:'all' }}"
+         href="/logs?file={{ filters.file }}&n={{ filters.n }}&lv={{ c.key }}{% if filters.logger %}&logger={{ filters.logger|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">
+        {{ c.label }}{% if c.key %}<span class="chip-n">{{ c.n }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    <form class="log-search" method="get" action="/logs">
+      <input type="hidden" name="file" value="{{ filters.file }}">
+      <input type="hidden" name="lv" value="{{ filters.lv }}">
+      <input type="hidden" name="n" value="{{ filters.n }}">
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="搜正文 / feed=29 / 关键字"
+             autocomplete="off">
+      <input type="text" name="logger" value="{{ filters.logger }}" placeholder="模块（如 triage）"
+             autocomplete="off" class="w-src">
+      <button class="btn" type="submit">筛选</button>
+      {% if filters.q or filters.logger %}<a class="btn" href="/logs?file={{ filters.file }}&n={{ filters.n }}&lv={{ filters.lv }}">清除</a>{% endif %}
+    </form>
+
+    <label class="log-live" title="暂停后不再自动刷新（翻旧账时用）">
+      <input type="checkbox" id="log-live" checked> 自动刷新
+    </label>
+  </div>
+
+  <div class="log-status meta">
+    文件 <code>{{ cur_file.name }}</code>（{{ cur_file.desc }}）·
+    本窗口扫到 <b>{{ scanned }}</b> 条记录 ·
+    命中 <b>{{ rows|length }}</b> 条
+    {% if scan_truncated %}· <span class="warn-text">窗口已到扫描上限，更早的内容没读</span>{% endif %}
+    · 计数只是<b>本窗口内</b>的统计（要精确计数请在工作目录对文件 grep）
+  </div>
+
+  <div class="log-scroll" id="log-scroll">
+    <div id="log-rows"
+         hx-get="/logs/rows?file={{ filters.file }}&lv={{ filters.lv }}&n={{ filters.n }}{% if filters.logger %}&logger={{ filters.logger|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}"
+         hx-trigger="every 5s [window.__logLive ? (window.__logLive() && document.visibilityState === 'visible') : true]"
+         hx-swap="innerHTML">
+      {% include "logs/_rows.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}

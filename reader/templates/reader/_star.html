@@ -1,0 +1,6 @@
+{% load reader_tags %}<button type="button"
+        class="star-btn {% if starred %}on{% endif %}"
+        hx-post="/hx/star/{{ entry_id }}"
+        hx-target="this" hx-swap="outerHTML"
+        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+        title="{% if starred %}取消星标{% else %}加星标{% endif %}">{% if starred %}★{% else %}☆{% endif %}</button>

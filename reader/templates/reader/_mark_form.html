@@ -1,0 +1,15 @@
+{% load reader_tags %}<form id="mark-form" class="split-form" hx-swap-oob="true"
+      hx-post="/hx/mark-read" hx-target="#entry-list" hx-swap="innerHTML">
+  {% csrf_token %}
+  <input type="hidden" name="sel" value="{{ filters.sel }}">
+  <input type="hidden" name="status" value="{{ filters.status }}">
+  <input type="hidden" name="q" value="{{ filters.q }}">
+  <input type="hidden" name="levels" value="{{ levels_value }}">
+  <button type="submit" name="days" value="0" class="btn btn-main">全部标记为已读</button>
+  <button type="button" class="btn btn-caret" data-menu-toggle aria-label="按时间标记">▾</button>
+  <div class="menu" hidden>
+    {% for value, label in mark_choices %}
+    <button type="submit" name="days" value="{{ value }}">{{ label }}</button>
+    {% endfor %}
+  </div>
+</form>

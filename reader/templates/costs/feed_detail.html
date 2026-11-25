@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load reader_tags %}
+
+{% block title %}{{ title }} · 开销{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>{{ title }}</h2>
+    <div class="page-actions">
+      <a class="btn" href="{{ back_url }}">← 返回总览</a>
+    </div>
+  </div>
+
+  {% include "costs/_range_bar.html" %}
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">{{ range_label }} 合计</div>
+      <div class="card-main">¥{{ total.cost_cny|floatformat:"-4" }}</div>
+      <div class="card-sub">≈ ${{ total.cost_usd|floatformat:"-4" }}</div>
+      <div class="card-sub">{{ total.tokens|num }} tokens</div>
+      <div class="card-sub">
+        {{ total.calls }} 次调用
+        {% if total.retries %}· {{ total.retries }} 次重试{% endif %}
+        {% if total.failures %}· <span class="danger">{{ total.failures }} 次失败</span>{% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">单次均价</div>
+      <div class="card-main">¥{% if total.calls %}{{ total.cost_cny|divide:total.calls|floatformat:"-4" }}{% else %}0{% endif %}</div>
+      <div class="card-sub">{% if range.single_day %}峰值小时{% else %}峰值日{% endif %} ¥{{ chart.peak_cny|floatformat:"-4" }}</div>
+      <div class="card-sub">按调用次数平均（含重试）</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <b>{% if chart.mode == 'hour' %}按小时开销 · {{ chart.date|date:"Y-m-d" }}{% else %}按日开销 · {{ range_label }}{% endif %}</b>
+      <span class="meta">
+        峰值 ¥{{ chart.peak_cny|floatformat:"-4" }}
+      </span>
+    </div>
+    {% include "costs/_bars.html" %}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><b>逐次调用明细</b><span class="meta">{{ range_label }} · 最新在上</span></div>
+    <table class="cgrid">
+      <thead>
+        <tr>
+          <th>时间</th><th>用途</th><th>模型</th>
+          <th class="num">in</th><th class="num">out</th><th class="num">缓存</th>
+          <th class="num">¥</th><th class="num">重试</th><th class="num">耗时</th><th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in detail %}
+        <tr>
+          <td class="nowrap">{{ r.ts|date:"m-d H:i:s" }}</td>
+          <td class="nowrap">{{ r.kind }}</td>
+          <td class="nowrap">{{ r.model }}</td>
+          <td class="num">{{ r.prompt_tokens|num }}</td>
+          <td class="num">{{ r.completion_tokens|num }}</td>
+          <td class="num">{% if r.cached_tokens %}{{ r.cached_tokens|num }}{% else %}—{% endif %}</td>
+          <td class="num">¥{{ r.cost_cny|floatformat:"-4" }}</td>
+          <td class="num">{% if r.retries %}{{ r.retries }}{% else %}—{% endif %}</td>
+          <td class="num">{{ r.latency_ms }}ms</td>
+          <td>{% if r.ok %}<span class="tag ok">OK</span>{% else %}<span class="tag bad" title="{{ r.error }}">失败</span>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="10" class="empty">窗口内没有调用记录。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

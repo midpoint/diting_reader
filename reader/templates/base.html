@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% comment %}
+  标签页标题：**页面名在前、品牌在后** —— 浏览器把长标题截断时，留在外面的是
+  "这是哪个页面"，品牌由 favicon 已经说明了。各页只需覆盖 block title；
+  阅读页切范围是 htmx 局部刷新，标题由 app.js 的 syncTabTitle 跟随工具栏。
+  {% endcomment %}
+  <title>{% block title %}阅读器{% endblock %} · 谛听</title>
+  {% comment %} 图标（static/img/，2026-10-16 第二版：只留一份 SVG = diting-logo.svg，
+       浅蓝底 #6E96C9 + 立耳白犬 + 信号弧线 + 橙点，标签页 / 品牌位共用；
+       PNG 是位图兜底（老渲染器/书签/触摸图标不吃 SVG），由用户从同源 SVG 导出。
+       ★ 多行注释必须用 comment 标签——Django 的 {# #} 只吃单行（verify 盯着这条） {% endcomment %}
+  <link rel="icon" type="image/svg+xml" href="/static/img/diting-logo.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <meta name="theme-color" content="#185fa5">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/vendor/htmx.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    {# ★ 最左侧一列主导航：icon + 文字，全站唯一。树只在阅读页显示（show_tree） #}
+    <nav class="rail">
+      {# ★ 品牌位：谛听 = 白犬。与标签页 favicon 同一份 diting-logo.svg（全站只此一份图形） #}
+      <a class="brand" href="/" title="谛听 · 阅读器">
+        <img src="/static/img/diting-logo.svg" alt="谛听" width="32" height="32">
+      </a>
+      <a class="rail-item {% if request.path == '/' %}active{% endif %}" href="/" title="阅读">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/>
+          <path d="M4 5.5V20.5"/><path d="M8 7.5h7"/><path d="M8 11h5"/>
+        </svg>
+        <span>阅读</span>
+      </a>
+      <a class="rail-item {% if '/costs' in request.path %}active{% endif %}" href="/costs" title="开销">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 19V9"/><path d="M9 19V4"/><path d="M15 19v-6"/><path d="M21 19v-9"/>
+        </svg>
+        <span>开销</span>
+      </a>
+      <a class="rail-item {% if '/summary' in request.path %}active{% endif %}" href="/summary" title="总结">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+          <path d="M14 3v5h5"/><path d="M9 13h7"/><path d="M9 17h5"/>
+        </svg>
+        <span>总结</span>
+      </a>
+      {# ★ 知识库：wiki 页的入口。放"总结"后面 —— 顺序就是产品链路：读 → 总结 → 入库 #}
+      <a class="rail-item {% if '/wiki' in request.path %}active{% endif %}" href="/wiki" title="知识库">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 6.5C10.5 5 8.5 4.5 5 4.5v13c3.5 0 5.5.5 7 2 1.5-1.5 3.5-2 7-2v-13c-3.5 0-5.5.5-7 2z"/>
+          <path d="M12 6.5v13"/>
+        </svg>
+        <span>知识</span>
+      </a>
+      {# ★ 日志页：只读 data/logs/*.log。放 rail 上是因为"出问题想看一眼"必须一键可达 #}
+      <a class="rail-item {% if '/logs' in request.path %}active{% endif %}" href="/logs" title="日志">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5"/>
+          <path d="M8 12h8"/><path d="M8 15.5h8"/><path d="M8 19h4.5"/>
+        </svg>
+        <span>日志</span>
+      </a>
+
+      <div class="rail-gap"></div>
+
+      {% comment %}
+      全局配置入口：点开是**模态弹窗**（不再是一整页）。左列分组、右列设置项，
+      任何页面都能就地打开、关掉回原处。/prefs 直连仍可用（整页兜底，同款两栏）。
+      图标用**齿轮**（feather settings 那套），不再用"圆点放射线"——后者看着像太阳 / 亮度调节。
+      ★ 注意：Django 的 `{# #}` **只吃单行**，多行必须用 `{% comment %}`，否则那段文字会
+        原样渲染到页面上（本轮真踩到了，靠截图才发现）。
+      {% endcomment %}
+      <button class="rail-item" type="button" onclick="openModal('/prefs')" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span>设置</span>
+      </button>
+    </nav>
+
+    {% if show_tree %}<aside class="sidebar">{% include "reader/_tree.html" %}</aside>{% endif %}
+    <main class="content">{% block content %}{% endblock %}</main>
+  </div>
+  <div id="modal-root"></div>
+  <div id="ctx-menu" class="menu" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+  {# 柱图 hover 明细：fixed 浮层，避免被 .bars 的 overflow 裁掉 #}
+  <div id="bar-tip" class="bar-tip-pop" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

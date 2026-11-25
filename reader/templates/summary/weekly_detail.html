@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}周报 {{ week_end|date:"Y-m-d" }}{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>周报 · {{ week_end|date:"Y-m-d" }}（截至该周周日）</h2>
+    <div class="page-actions">
+      {% include "wiki/_ai_trigger.html" with source_type="report" source_id=marks_source_id %}
+      <form class="inline-form" data-async="/summary/weekly"
+            data-msg="正在重跑 {{ week_end|date:'Y-m-d' }} 的周报…">
+        {% csrf_token %}
+        <input type="hidden" name="week_end" value="{{ week_end|date:'Y-m-d' }}">
+        <input type="hidden" name="force" value="1">
+        <button class="btn" type="submit" title="基于同样的 7 份日报重跑一次（约 ¥0.13）">重跑周报</button>
+      </form>
+      <a class="btn" href="/summary">回列表</a>
+    </div>
+  </div>
+
+  <p class="meta">
+    周报 = 过去 7 天日报的合集，一次调用合成；引用从日报搬来并标记
+    <code>src=weekly</code>。<code>{{ path }}</code>
+  </p>
+
+  <div class="panel">
+    <article class="report" id="article-body-report-{{ marks_source_id }}">{{ body|safe }}</article>
+  </div>
+
+  {% include "wiki/_article_tools.html" with source_type="report" source_id=marks_source_id highlights=marks.highlights annotations=marks.annotations err=marks.err undisplayed=marks_undisplayed body_selector="article.report" %}
+</div>
+{% endblock %}

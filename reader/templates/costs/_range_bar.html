@@ -1,0 +1,32 @@
+{% comment %}
+时间范围条：预设按钮 + 自定义两个日期 + 清除筛选条件。
+
+上下文：range / presets / range_action / range_hidden / clear_url。
+★ 自定义的两个日期框**默认就是当前区间** —— 切到"自定义"时不用重新选一遍。
+★「清除筛选条件」只在当前区间不是本页默认时出现（总览与下钻**都默认近 7 天**）。
+★ 右侧**不再显示区间文字**：下面的汇总卡已经写着当前区间，重复一遍纯属噪音。
+{% endcomment %}
+<div class="range-bar">
+  <div class="range-presets">
+    {% for p in presets %}
+    <a class="btn {% if p.active %}primary{% endif %}" href="{{ p.url }}">{{ p.label }}</a>
+    {% endfor %}
+  </div>
+
+  <form class="range-custom {% if range.preset == 'custom' %}active{% endif %}" method="get" action="{{ range_action }}">
+    <span class="range-custom-label">自定义</span>
+    <input type="date" name="start" value="{{ range.start|date:'Y-m-d' }}" required>
+    <span class="range-arrow">→</span>
+    <input type="date" name="end" value="{{ range.end|date:'Y-m-d' }}" required>
+    <input type="hidden" name="preset" value="custom">
+    {% for k, v in range_hidden.items %}
+    <input type="hidden" name="{{ k }}" value="{{ v }}">
+    {% endfor %}
+    <button class="btn" type="submit">应用</button>
+  </form>
+
+  {# ★ 清除链接放在「应用」右侧：它在不在都不该让左边的预设按钮位移 #}
+  {% if clear_url %}
+  <a class="range-clear" href="{{ clear_url }}">清除筛选条件</a>
+  {% endif %}
+</div>

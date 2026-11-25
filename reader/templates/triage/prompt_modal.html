@@ -1,0 +1,45 @@
+{% load reader_tags %}<div class="modal-backdrop" onclick="closeModal(this)"></div>
+<div class="modal">
+  <div class="modal-head">
+    <b>{{ title }} · 分级 prompt</b>
+    <button class="btn fs-btn" type="button" onclick="toggleFullscreen(this)" title="全屏阅读">⤢ 全屏</button>
+    <button class="close" type="button" onclick="closeModal(this)">✕</button>
+  </div>
+
+  <div class="modal-body">
+    <h3>合并后的口径（分类 → feed 拼接）</h3>
+    <table class="grid">
+      <tr><th style="width:90px">级别</th><th>判据</th><th style="width:130px">来源</th></tr>
+      {% for seg in spec_levels %}
+      <tr>
+        <td>{{ seg.label }}</td>
+        <td class="wrap">{% if seg.text %}{{ seg.text|linebreaksbr }}{% else %}<i>未配置</i>{% endif %}</td>
+        <td>{% for p in seg.parts %}<span class="tag tag-{{ p.from }}">{{ p.src }}</span> {% endfor %}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td><b>默认</b></td>
+        <td colspan="2"><b>L{{ spec.default_level }}</b>（没命中任何判据 / 调用失败时归到这里）</td>
+      </tr>
+    </table>
+
+    <h3>当前生效版本</h3>
+    {% if active %}
+      <div class="meta">
+        v{{ active.version }} · <span class="tag">{{ active.get_built_by_display }}</span>
+        {% if active.validated %}<span class="tag ok">已通过校验</span>{% else %}<span class="tag bad">回退版</span>{% endif %}
+        · {{ active.created_at|reldt }} · {{ active.prompt_text|length }} 字符
+      </div>
+      <pre class="prompt-box">{{ active.prompt_text }}</pre>
+    {% else %}
+      <div class="empty">没有 prompt（四段全空 → 不调 LLM，一律 L{{ spec.default_level }}）。</div>
+    {% endif %}
+
+    <h3>底座（全局，不受任何 feed 配置影响）</h3>
+    <pre class="prompt-box">{{ base_rules }}</pre>
+  </div>
+
+  <div class="modal-foot">
+    <button type="button" class="btn primary" onclick="closeModal(this)">关闭</button>
+  </div>
+</div>

@@ -1,0 +1,247 @@
+{% comment %}设置面板（模态片段 + 整页兜底共用）。
+左列 = 分组切换，右列 = 该组的设置项。standalone=1 时（/prefs 直接访问）去掉遮罩、
+改成静态定位，两栏结构完全一样。
+★ 交互函数全在 static/app.js（prefsTab / prefsSave / prefsReset）：openModal 是把
+  返回的 HTML 塞进 innerHTML —— 片段里内联的 <script> **不会被执行**，只有
+  onclick/onchange 这类属性处理器可用。{% endcomment %}
+{% if not standalone %}<div class="modal-backdrop" onclick="closeModal(this)"></div>{% endif %}
+<div class="modal modal-prefs{% if standalone %} modal-standalone{% endif %}">
+
+  {% comment %}
+  ★ 整页兜底（standalone）时不画这条头：模板外层 index.html 已有「设置」h2，
+    两个并排就是同一句话出现两次。
+  {% endcomment %}
+  {% if not standalone %}
+  <div class="modal-head">
+    <b>设置</b>
+    <button class="close" type="button" onclick="closeModal(this)">✕</button>
+  </div>
+  {% endif %}
+
+  <div class="prefs-shell">
+    <nav class="prefs-side">
+      {% for item in env_groups %}
+      <button class="prefs-tab{% if item.g.key == active %} active{% endif %}"
+              type="button" data-g="{{ item.g.key }}"
+              onclick="prefsTab(this)">{{ item.g.label }}</button>
+      {% endfor %}
+      <div class="prefs-sep"></div>
+      {% for item in groups %}
+      <button class="prefs-tab{% if item.g.key == active %} active{% endif %}"
+              type="button" data-g="{{ item.g.key }}"
+              onclick="prefsTab(this)">{{ item.g.label }}</button>
+      {% endfor %}
+      {% comment %}
+      ★ 全局层文件不是 settingkit 的键值组（整篇 markdown、不走 AppSetting 表），
+        所以模板里单独一段，data-g="globals" 与普通分组同一套切换逻辑。
+      {% endcomment %}
+      <div class="prefs-sep"></div>
+      <button class="prefs-tab{% if active == 'globals' %} active{% endif %}"
+              type="button" data-g="globals"
+              onclick="prefsTab(this)">全局层文件</button>
+      <button class="prefs-tab{% if active == 'envraw' %} active{% endif %}"
+              type="button" data-g="envraw"
+              onclick="prefsTab(this)">高级 .env</button>
+    </nav>
+
+    <div class="prefs-main">
+      {% comment %}
+      ★ .env 组：数据源 / 模型 / 运行参数。密码框一律空白回显，
+        「已设置」徽标只表示有值；留空保存 = 保持原值，勾「清除」才删。
+      {% endcomment %}
+      {% for item in env_groups %}
+      <section class="pref-group" data-g="{{ item.g.key }}"
+               {% if item.g.key != active %}hidden{% endif %}>
+        <h3>{{ item.g.label }}</h3>
+        <p class="pref-help">{{ item.g.note }}</p>
+
+        <table class="pref-table">
+          <tbody>
+          {% for row in item.fields %}
+          <tr data-key="{{ row.f.key }}" data-kind="{{ row.f.type }}">
+            <td class="pref-label">
+              {{ row.f.label }}
+              {% if row.f.effect == "restart" %}<span class="pref-effect" title="重启进程后生效">重启</span>
+              {% else %}<span class="pref-effect ok" title="保存后立即生效">即时</span>{% endif %}
+              {% if row.from_file %}<span class="pref-over" title="已写在 .env 里">文件</span>{% endif %}
+            </td>
+            <td class="pref-input">
+              {% if row.f.type == "select" %}
+                <select class="pref-field" data-key="{{ row.f.key }}">
+                  {% for val, label in row.f.options %}
+                  <option value="{{ val }}"{% if row.value == val %} selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              {% elif row.f.type == "bool" %}
+                <input type="checkbox" class="pref-field" data-key="{{ row.f.key }}"
+                       {% if row.value == "1" %}checked{% endif %}>
+              {% elif row.f.type == "int" %}
+                <input type="number" class="pref-field" data-key="{{ row.f.key }}" step="1"
+                       {% if row.f.min is not None %}min="{{ row.f.min }}"{% endif %}
+                       {% if row.f.max is not None %}max="{{ row.f.max }}"{% endif %}
+                       value="{{ row.value }}">
+              {% elif row.f.type == "password" %}
+                <input type="password" class="pref-field" data-key="{{ row.f.key }}"
+                       autocomplete="new-password" value=""
+                       placeholder="{% if row.is_set %}已设置（留空保持原值）{% else %}未设置{% endif %}">
+                {% if row.is_set %}
+                <label class="pref-clear"><input type="checkbox" class="pref-clear-box"
+                       data-key="{{ row.f.key }}"> 清除</label>
+                {% endif %}
+              {% else %}
+                <input type="text" class="pref-field" data-key="{{ row.f.key }}"
+                       value="{{ row.value }}" maxlength="500"
+                       placeholder="{{ row.f.placeholder|default:'' }}">
+              {% endif %}
+            </td>
+            <td class="pref-help">{{ row.f.help|default:"" }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <div class="pref-actions">
+          <button class="btn primary" type="button" onclick="prefsSaveEnv(this)">保存本组</button>
+          {% if item.g.key == "datasource" %}
+          <button class="btn" type="button" onclick="prefsTestDatasource(this)">测试连接</button>
+          <span class="pref-help">测试用的是「已保存」的配置，先保存再测。</span>
+          {% endif %}
+        </div>
+      </section>
+      {% endfor %}
+
+      {% for item in groups %}
+      <section class="pref-group" data-g="{{ item.g.key }}"
+               {% if item.g.key != active %}hidden{% endif %}>
+        <h3>{{ item.g.label }}</h3>
+
+        {% if item.g.key == "notify" and not notify.installed %}
+        <div class="alert-bar">
+          ⚠ 系统通知依赖 <code>{{ notify.bin }}</code>，当前未安装 —— 开关打开也不会有弹窗。
+          安装：<code>{{ notify.hint }}</code>（装完无需重启）。
+        </div>
+        {% endif %}
+
+        <table class="pref-table">
+          <tbody>
+          {% for row in item.fields %}
+          <tr data-key="{{ row.f.key }}">
+            <td class="pref-label">
+              {{ row.f.label }}
+              {% if row.f.effect == "restart" %}<span class="pref-effect" title="调度注册参数，重启进程后生效">重启</span>
+              {% else %}<span class="pref-effect ok" title="保存后立即生效（最多延迟 15 秒）">即时</span>{% endif %}
+              {% if row.overridden %}<span class="pref-over" title="已在本页改过，删除后回退 .env/默认">已改</span>{% endif %}
+            </td>
+            <td class="pref-input">
+              {% if row.f.type == "bool" %}
+                <input type="checkbox" class="pref-field" data-key="{{ row.f.key }}"
+                       onchange="prefsSave(this)" {% if row.value %}checked{% endif %}>
+              {% elif row.f.type == "int" %}
+                <input type="number" class="pref-field" data-key="{{ row.f.key }}"
+                       onchange="prefsSave(this)" step="1"
+                       {% if row.f.minimum is not None %}min="{{ row.f.minimum }}"{% endif %}
+                       {% if row.f.maximum is not None %}max="{{ row.f.maximum }}"{% endif %}
+                       value="{{ row.value }}">
+              {% elif row.f.type == "float" %}
+                <input type="number" class="pref-field" data-key="{{ row.f.key }}"
+                       onchange="prefsSave(this)" step="0.1" value="{{ row.value }}">
+              {% else %}
+                <input type="text" class="pref-field" data-key="{{ row.f.key }}"
+                       onchange="prefsSave(this)" value="{{ row.value }}" maxlength="120">
+              {% endif %}
+            </td>
+            <td class="pref-help">
+              {{ row.f.help }}
+              <button class="pref-reset" type="button" data-key="{{ row.f.key }}"
+                      onclick="prefsReset(this)" {% if not row.overridden %}hidden{% endif %}
+                      title="删除本页写入的值，回退 .env / 默认">回退</button>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endfor %}
+
+      {% comment %}
+      全局层文件：整篇 markdown 直接编辑。
+      ★ 保存是**显式按钮**而不是 blur 自动保存：这是几百到几千字的正文，误触失焦
+        就写盘的代价太大；也不同于键值项（那种才需要 onchange 即存）。
+      ★ 文件缺失时给 cp 命令而不是空白框：空框 + 保存 = 冲掉 example 的机会，
+        而且用户不知道该写什么。
+      {% endcomment %}
+      <section class="pref-group" data-g="globals"
+               {% if active != 'globals' %}hidden{% endif %}>
+        <h3>全局层文件</h3>
+        <p class="pref-help">
+          这两个文件是<b>整篇 markdown</b>，直接写回仓库 <code>Meta/</code>，保存即生效（每次读取现读盘）。
+          它们同时是普通文件：可以 vim、可以 git diff、可以备份。
+        </p>
+
+        {% for row in files %}
+        <div class="pref-file" data-key="{{ row.key }}">
+          <div class="pref-file-head">
+            <b>{{ row.label }}</b>
+            <code>Meta/{{ row.file }}</code>
+            <span class="pref-file-chars">{{ row.chars }} 字</span>
+            <button class="btn primary" type="button"
+                    onclick="prefsSaveFile(this)">保存</button>
+          </div>
+
+          {% if not row.exists %}
+          <div class="alert-bar">
+            ⚠ <code>Meta/{{ row.file }}</code> 不存在 —— 对应功能会退回「无依据」状态
+            （画像缺失：分级少一层读者依据；本体缺失：编译不知道能落哪些域）。
+            先生成一份再改：<code>{{ row.cp_cmd }}</code>
+          </div>
+          {% endif %}
+
+          <div class="pref-help">{{ row.help }}</div>
+          <textarea class="pref-file-box" rows="12" spellcheck="false"
+                    oninput="prefsCountChars(this)">{{ row.text }}</textarea>
+          <div class="pref-file-foot">{{ row.hint }}</div>
+        </div>
+        {% endfor %}
+      </section>
+
+      {% comment %}
+      高级：整份 .env。结构化分组没覆盖到的调参项在这里改；载入是显式按钮，
+      避免每次打开设置页都把含密钥的原文塞进 HTML。
+      {% endcomment %}
+      <section class="pref-group" data-g="envraw"
+               {% if active != 'envraw' %}hidden{% endif %}>
+        <h3>高级：整份 .env</h3>
+        <p class="pref-help">
+          文件：<code>{{ env_path }}</code>。这里是原始文本，注释与顺序会原样保留；
+          保存后「即时」项立即生效，标「重启」的项重启应用后生效。
+          <b>包含明文密钥</b>，不要截图或发给别人。
+        </p>
+        <div class="pref-file" data-key="envraw">
+          <div class="pref-file-head">
+            <b>.env</b>
+            <span class="pref-file-chars" id="envraw-chars">未载入</span>
+            <button class="btn" type="button" onclick="prefsLoadEnv(this)">载入原文</button>
+            <button class="btn primary" type="button" onclick="prefsSaveEnvRaw(this)">保存</button>
+          </div>
+          <textarea class="pref-file-box" id="envraw-box" rows="18" spellcheck="false"
+                    placeholder="点「载入原文」后在这里编辑……"></textarea>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal-foot">
+    <span class="hint pref-foot-hint">
+      数据源/模型密钥写入根目录 .env（0600）· 本页行为设置 &gt; .env &gt; 代码默认 · 预算在<a href="/costs">开销页</a>
+    </span>
+    {% if standalone %}{% else %}
+    <button class="btn primary" type="button" onclick="closeModal(this)">关闭</button>
+    {% endif %}
+  </div>
+
+  {% comment %}
+  ★ 本页没有真正的 <form>（保存走 JS + X-CSRFToken），但 Django 只在渲染
+    csrf_token 标签时才会种 csrftoken cookie —— 没有这个隐藏表单，JS 永远拿到空
+    token，保存 403。（多行注释必须用 comment 标签：{# #} 只吃单行。）
+  {% endcomment %}
+  <form hidden>{% csrf_token %}</form>
+</div>

@@ -1,0 +1,64 @@
+{% comment %}
+审批对话 panel（第五步 5b，③）。根节点 id="approval-chat"，htmx outerHTML 换自己。
+★ 不 extends base.html：它被塞进 .approval-shell（已在 modal 内），是片段不是整页。
+★ 根节点只用 .approval-chat，不复用 .wiki-chat：app.js 里几处「文章对话专用」的
+  全局逻辑（保存草稿 / 自动总结 / afterSettle 聚焦）按 .wiki-chat / .ai-panel 选中，
+  挂上会把审批对话的输入串进文章对话框。子组件 .wc-* 样式照旧复用。
+★ 消息行复用 _wc_msg.html，但传 show_marks=0：审批对话暂时不做划线/批注，
+  连 data-mark-* 锚点都不输出（2026-11-22）。发送端点指向 /wiki/approval/chat/send
+  （调 wiki_loop.run），与文章对话的 conversation.ask 无关。
+★ 「本轮动作」不单独渲染：run 已把动作汇总（【本轮动作】…）写进 assistant 消息
+  并落库，视图只取历史渲染 —— 再单独渲染一份就是同一轮动作显示两遍、两套格式
+  要同步（判据收一处）。
+★ 清空 / 发送都是真 form：hx-vals 走 HX-Vals 头只能 latin-1，中文 body 必须走
+  POST body（utf-8）；清空还要带 csrf token，否则 403。清空不可恢复，hx-confirm 兜底。
+★ 2026-11-13：oob=True 时根节点带 hx-swap-oob —— 退稿后草稿被归档，③ 里隐藏的
+  selected_slug 必须跟着切到下一份，否则人在浮层里接着发话会作用到已退掉的草稿。
+  首次 include（壳渲染）不传 oob，输出与以前逐字节一致。
+{% endcomment %}
+<div class="approval-chat" id="approval-chat"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="wc-head">
+    <b>审批对话</b>
+    <span class="wc-hint">草稿 D1/D2（编号稳定不跳变）、候选 #201/#202，你说 agent 改分组{% if not approval_active %} · 当前无待审批草稿{% endif %}</span>
+    {% if messages %}
+    {% comment %}
+    清空不可恢复：hx-confirm 二次确认。表单字段走 body，中文不进请求头。
+    {% endcomment %}
+    <form class="wc-clear-form" hx-post="/wiki/approval/chat/clear"
+          hx-target="#approval-chat" hx-swap="outerHTML"
+          hx-confirm="清空审批对话？消息会被删除，不可恢复。">
+      {% csrf_token %}
+      <button class="btn mini wc-clear" type="submit">清空</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="wc-log">
+    {% for item in messages %}
+    {% include "wiki/_wc_msg.html" with m=item.m marks=item.marks marks_undisplayed=item.marks_undisplayed show_marks=item.show_marks %}
+    {% empty %}
+    <div class="wc-empty">
+      <div class="wc-empty-tip">说你要怎么改，例如：把第 3、5 条候选挪去新页『端侧 AI 成本』</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if err %}<div class="wc-err" role="alert">{{ err }}</div>{% endif %}
+
+  {% if enabled %}
+  <form class="wc-form" hx-post="/wiki/approval/chat/send"
+        hx-target="#approval-chat" hx-swap="outerHTML"
+        hx-disabled-elt="find button" hx-indicator="#approval-chat-busy">
+    {% csrf_token %}
+    {% if selected_slug %}<input type="hidden" name="selected_slug" value="{{ selected_slug }}">{% endif %}
+    <textarea name="body" rows="2" required
+              placeholder="说一句要怎么改分组…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <div class="wc-actions">
+      <span class="wc-busy" id="approval-chat-busy">思考中…</span>
+      <button class="btn" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>发送</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="meta">对话未开启（WIKI_CHAT_ENABLED=0）</div>
+  {% endif %}
+</div>

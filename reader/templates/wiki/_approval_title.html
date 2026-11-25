@@ -1,0 +1,43 @@
+{% comment %}
+审批浮层②主工作区的标题行（2026-11-11）：标题高频改动，点一下就地改成文本框，
+不用再走审批对话。改名走与对话同一套 wa.set("title") 链：slug 跟随标题走拼音、
+其他草稿的 merges/edits 与正文 wikilink 同步、审批标记迁移。
+★ 两种形态：display（h3 + 标题按钮）与 edit（输入框 + 保存/取消）。
+  GET 片段根节点就是本 .approval-title（htmx 换的就是它）；保存 POST 换整个
+  #approval-workarea —— 改名会换 slug，工作区、左侧列表选中要一起刷新。
+★ htmx 1.9.12 换入内容后会自动 focus 带 autofocus 的元素，无需 app.js 兜底。
+{% endcomment %}
+<div class="approval-title">
+  {% if edit %}
+  <form class="title-edit-form" hx-post="/wiki/approval/title/save"
+        hx-target="#approval-workarea" hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="slug" value="{{ slug }}">
+    <input class="title-input" type="text" name="title" value="{{ title_value }}"
+           placeholder="新标题（slug 会跟着改）" maxlength="60"
+           autocomplete="off" autofocus>
+    <button class="btn mini" type="submit">保存</button>
+    <button class="btn mini" type="button"
+            hx-get="/wiki/approval/title?slug={{ slug }}&cancel=1"
+            hx-target="closest .approval-title" hx-swap="outerHTML">取消</button>
+  </form>
+  {% else %}
+  <h3>
+    <button class="title-edit" type="button" title="点击修改标题"
+            hx-get="/wiki/approval/title?slug={{ slug }}"
+            hx-target="closest .approval-title" hx-swap="outerHTML"
+            {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>{{ title }}</button>
+  </h3>
+  {% comment %}
+  ★ 2026-11-13：右上角这行显示的是**草稿自己的文件名**，不是它要覆盖的页。
+    现在的并入稿与目标页同名；旧版「原地改判」留下的稿会沿用源稿名
+    （`tui-li-fu-fei-de-ping-jing.md`），所以文件名与目标页不同时补一句说明。
+    那条旧链路会让人以为「标题叫 AI泡沫、草稿却是另一个名字」。
+  {% endcomment %}
+  <span class="meta">草稿 {{ slug }}.md ·
+    {% if merges %}并入 <code>{{ merge_page.page|default:merges }}</code>{% if slug != merges %}（草稿名沿用改判前的文件，与目标页无关）{% endif %}
+    {% elif edits %}替换 <code>wiki/{{ edits }}.md</code>
+    {% elif delete %}删页提案 · 在下方逐条定候选去向
+    {% endif %}· {{ candidates|length }} 条候选</span>
+  {% endif %}
+</div>

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}知识库{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>知识库</h2>
+    <div class="page-actions">
+      <a class="btn" href="/wiki/tags">标签总览</a>
+      {% if tag %}<a class="btn" href="/wiki{% if src %}?src={{ src|urlencode }}{% endif %}">清除标签过滤</a>{% endif %}
+      {% if src %}<a class="btn" href="/wiki{% if tag %}?tag={{ tag|urlencode }}{% endif %}">清除来源过滤</a>{% endif %}
+    </div>
+  </div>
+
+  {% comment %}
+  ★ 第十一步：文案跟着交互走。旧版写「只有提炼会调模型」「自动编译成页在
+    阶段 2.3，还没做」—— 提炼已隐身、编译也已落地，两句话都在说谎。
+  ★ 顺手修掉双重 #wiki-body：原先这里包一层 <div id="wiki-body">，
+    _body.html 自己又有一个根节点 ⇒ 初次加载是两个同 id 的容器，
+    htmx 的 hx-target="#wiki-body" 只认第一个，outerHTML 替换后结构又变一层。
+    现在整页与片段共用**同一个**根节点（_body.html 头部注释早就这么要求）。
+  {% endcomment %}
+  <p class="meta">
+    这里只有<b>人确认过</b>的东西：<code>.drafts/</code> 里的草稿裁决通过才进
+    <code>wiki/&lt;域&gt;/</code>。阅读与审批<b>不花钱</b>；只有「编译」会调模型，
+    点一次把新痕迹提炼并编成草稿，结果在「审批浮层」里等你裁决。
+    目录：<code>{{ stats.root_label }}</code>（可用 <code>WIKI_DIR</code> 指到 Obsidian vault）。
+    {% comment %}
+      ★ 只打 `root_label`（相对项目根，如 `data/wiki`；指到项目外则「自定义目录」），
+        绝不打 `stats.root` —— 那是 `/Users/<用户名>/…` 的绝对路径，页面会被截图、
+        会被投屏、会被贴进聊天，路径里的用户名与目录结构和知识库内容毫无关系。
+        判据：verify_wiki.py 的「首页不展示绝对路径」两条 + core/tests 的渲染用例。
+    {% endcomment %}
+  </p>
+
+  {% include "wiki/_body.html" %}
+</div>
+{% endblock %}

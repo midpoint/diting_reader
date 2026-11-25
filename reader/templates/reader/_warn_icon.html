@@ -1,0 +1,12 @@
+{% comment %}
+异常标记：三角形内嵌感叹号（常见警告 / 注意标志）。
+★ 单独一份，feed / 分组 / 分类三处共用，避免三处图形漂移。
+★ 颜色跟 `.warn` 的 currentColor 走；感叹号用白色挖空，深色底上也清楚。
+★ 别写成 emoji ⚠（各平台会渲染成彩色图标，与侧栏的克制风格不搭）。
+{% endcomment %}
+<svg class="warn-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+  <path d="M8 2 L14.8 14 H1.2 Z" fill="currentColor" stroke="currentColor"
+        stroke-width="1.3" stroke-linejoin="round"/>
+  <rect x="7.15" y="5.5" width="1.7" height="5.1" rx="0.85" fill="#fff"/>
+  <circle cx="8" cy="12.15" r="0.95" fill="#fff"/>
+</svg>

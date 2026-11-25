@@ -1,0 +1,18 @@
+{% comment %}
+标签 chip 列表（审批浮层②的标签编辑器，2026-11-16）。
+
+★ chip 的 HTML **只有这一份**：初始渲染由 `_approval_tags.html` include 它，
+  加/删标签后的 POST 也直接返回它（前端换掉 `#tag-chips`）。两处各拼一遍的话，
+  样式和数据属性迟早分叉，症状是「刚打开能删、改完一次就点不动」。
+★ 根节点 id="tag-chips"：前端换的就是它，返回片段的根节点必须同名。
+★ 不可点、不可编辑（内容是文本）：标签筛选 `/wiki?tag=` 还没做，做成链接就是
+  404 空壳；改标签走旁边的输入框和 × 按钮，不在这里直接改文字。
+★ 「还没有标签」要说出口，不能只留一片空白 —— 空白分不清「没有」和「没渲染」。
+★ 「未保存：…」只在服务端拒收时出现，紧贴 chips：它描述的是**这一批没落盘**，
+  所以这时 chips 显示的是刚提交的那批，而不是磁盘上的旧值。
+{% endcomment %}
+<span class="tag-chips" id="tag-chips">
+  {% for t in tags %}<span class="tag-chip" data-tag="{{ t }}"><span class="tag-text">{{ t }}</span><button type="button" class="tag-x" aria-label="移除标签 {{ t }}" title="移除标签 {{ t }}">×</button></span>{% endfor %}
+  {% if not tags %}<span class="meta tag-empty">还没有标签</span>{% endif %}
+  {% if tag_err %}<span class="tag-err">未保存：{{ tag_err }}</span>{% endif %}
+</span>

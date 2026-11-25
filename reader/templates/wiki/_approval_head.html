@@ -1,0 +1,27 @@
+{% comment %}
+审批浮层头部（2026-11-11 从 _approval.html 抽出）：两处草稿计数
+（「审批浮层 · N 份草稿」+「提交入库（N）」）都在这里 —— 审批对话把草稿
+合并/归档掉之后，计数必须跟着动，否则头还显示旧数量。
+★ 根节点必须 id="approval-head"：htmx oob 按 id 换的就是它。
+★ oob 由调用方传：浮层壳首次 include 时不带（正常渲染），OOB 刷新时带。
+{% endcomment %}
+<div class="modal-head" id="approval-head"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <b>审批浮层 · {{ count }} 份草稿</b>
+  <span class="meta">在下方对话里说怎么改分组；单页退稿在工作区标题下，整批通过点「提交入库」</span>
+  {% comment %}
+  整批入库（第五步 5c）：一次把 .drafts/ 全验后全动。二次确认在内联 confirm，
+  N 是真实数量；服务端不额外要求 confirm=1（只有这个浮层能点它）。
+  ★ 这里必须是 comment 标签：Django 的井号注释只吃单行，换行后整段会被原样
+    渲染到页面上（第五步 5a 就漏过一次，21 条断言全绿、只有截图看得见）。
+  {% endcomment %}
+  {% if mutex_msg %}
+  <div class="alert-bar is-bad mutex-bar">{{ mutex_msg }}</div>
+  {% endif %}
+  {% if count %}
+  <form class="approval-commit" data-async="{% url 'wiki_approval_commit' %}" data-msg="正在入库…">
+    <button class="btn approval-go" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}
+            onclick="return confirm('把 {{ count }} 份草稿全部入库？入库后即定稿，草稿目录会清空。')">提交入库（{{ count }}）</button>
+  </form>
+  {% endif %}
+  <button class="btn" type="button" onclick="closeModal(this)">关闭</button>
+</div>

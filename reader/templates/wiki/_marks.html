@@ -1,0 +1,59 @@
+{% comment %}
+某内容块的「划线 + 批注」**兜底列表**（阶段 1）。
+
+★ 它不再是「这一篇记了什么」的索引：
+  能落位的标记在正文里就有高亮，hover / 点击即可改或删，不需要第二份展示
+  （2026-10-31 用户判断：主流笔记工具也没有这个列表，操作在原文就能无痛完成）。
+★ 只在**有标记没能在正文里落位**时才出现（`undisplayed`）：
+  锚点失配（正文被 Miniflux 重抓、跨节点选区）、或没有 anchor 的历史数据。
+  这类标记在正文里连底色都没有 —— 没有这个列表就等于「库里有、页面上看不见、
+  也删不掉」。所以它不是冗余展示，是**静默降级的唯一出口**。
+★ 单一根节点 `#marks-{{ source_type }}-{{ source_id }}` 必须**始终存在**：
+  htmx 的 outerHTML 替换要求 target 唯一且稳定；没东西可显示时它只是个空 div。
+
+★ 录入不靠手填表单：选中文本 → toolbar（app.js）→ POST /wiki/highlight
+  或 /wiki/annotation，成功后 htmx 局部刷新（含正文 inline 高亮）。
+{% endcomment %}
+<div class="marks{% if not undisplayed and not err %} is-empty{% endif %}"
+     id="marks-{{ source_type }}-{{ source_id }}"
+     data-source-type="{{ source_type }}" data-source-id="{{ source_id }}">
+  {% if err %}<div class="marks-err">{{ err }}</div>{% endif %}
+
+  {% if undisplayed %}
+  <div class="marks-head">
+    <b>{{ undisplayed|length }} 条未在正文中定位</b>
+    <span class="marks-hint meta">正文可能已更新；这些记录仍可在这里改或删</span>
+  </div>
+
+  <ul class="mark-list">
+    {% for h in highlights %}{% if h.id in undisplayed %}
+    <li class="mark-item mark-hl" data-mark-id="{{ h.id }}">
+      <div class="mark-quote">{{ h.quoted_text }}</div>
+      {% if h.note %}<div class="mark-note">{{ h.note }}</div>{% endif %}
+      <div class="mark-foot">
+        <span class="meta">{{ h.created_at|date:"m-d H:i" }}</span>
+        <button class="mark-del" type="button" data-mark-edit="highlight" data-id="{{ h.id }}"
+                data-cur="{{ h.note }}" title="编辑这条划线的备注">编辑</button>
+        <button class="mark-del" type="button" data-mark-del="highlight" data-id="{{ h.id }}"
+                title="删除这条划线">删</button>
+      </div>
+    </li>
+    {% endif %}{% endfor %}
+  </ul>
+
+  <ul class="mark-list">
+    {% for a in annotations %}{% if a.id in undisplayed %}
+    <li class="mark-item mark-an" data-mark-id="{{ a.id }}">
+      <div class="mark-body">{{ a.body }}</div>
+      <div class="mark-foot">
+        <span class="meta">{{ a.created_at|date:"m-d H:i" }}</span>
+        <button class="mark-del" type="button" data-mark-edit="annotation" data-id="{{ a.id }}"
+                data-cur="{{ a.body }}" title="编辑这条批注">编辑</button>
+        <button class="mark-del" type="button" data-mark-del="annotation" data-id="{{ a.id }}"
+                title="删除这条批注">删</button>
+      </div>
+    </li>
+    {% endif %}{% endfor %}
+  </ul>
+  {% endif %}
+</div>

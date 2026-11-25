@@ -1,0 +1,38 @@
+{% load reader_tags %}{% comment %}
+★ data-unread 给文章右键菜单用：只给**已读**行「标记为未读」（未读行给了是空动作）。
+  展开正文会即时标已读，app.js 在 htmx:afterSwap 里同步把这个属性翻成 0。
+{% endcomment %}<div class="entry-row {% if row.entry.unread %}is-unread {% endif %}{% if pinned %}is-pinned{% endif %}"
+     id="row-{{ row.entry.id }}" data-state="{{ row.state }}"
+     data-unread="{% if row.entry.unread %}1{% else %}0{% endif %}"
+     data-feed="{{ row.entry.feed_id }}"
+     data-rated="{% if row.rated %}1{% else %}0{% endif %}"
+     data-translated="{% if row.translation %}1{% else %}0{% endif %}"
+     data-feed-translate="{% if row.feed_translate %}1{% else %}0{% endif %}"
+     data-cfg="{% if row.has_cfg %}1{% else %}0{% endif %}"
+     {% if pinned %}data-pinned="1"{% endif %}>
+  <div class="entry-line">
+    {% include "reader/_star.html" with entry_id=row.entry.id starred=row.entry.starred %}
+    <div class="entry-head" hx-post="/hx/entry/{{ row.entry.id }}?{{ qs }}"
+         hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+         hx-target="#detail-{{ row.entry.id }}" hx-swap="innerHTML">
+      {% if pinned %}{% comment %}
+        ★ 这一行**不属于当前列表**（它在最近 ENTRY_WINDOW 条之外），是深链
+          单独取出来插在顶部的。不说清楚，人会以为它是最新一条 ——
+          列表顺序是"最近 N 条"这一语义的一部分。
+      {% endcomment %}<span class="col-pin"
+            title="这条不在当前列表（只显示最近 {{ window }} 条），是从链接单独取出来打开的">单独打开</span>{% endif %}
+      {% if not single_feed %}<span class="col-feed" title="{{ row.entry.feed_title }}">{{ row.entry.feed_title }}</span>{% endif %}
+      <span class="col-title">
+        {% include "reader/_level_badge.html" with row=row %}
+        {% if row.translation and row.translation.title_zh != row.entry.title %}
+          <span class="t-zh" lang="zh-Hans">{{ row.translation.title_zh }}</span>
+          <span class="t-en" lang="en">{{ row.entry.title }}</span>
+        {% else %}
+          {{ row.entry.title }}
+        {% endif %}
+      </span>
+      <span class="col-time">{{ row.entry.published_at|reldt }}</span>
+    </div>
+  </div>
+  <div class="entry-detail" id="detail-{{ row.entry.id }}" hidden></div>
+</div>

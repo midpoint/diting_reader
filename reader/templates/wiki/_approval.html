@@ -1,0 +1,23 @@
+{% comment %}
+只读审批浮层（第五步 5a）——浮层壳。
+★★ 绝不能 {% extends "base.html" %}：openModal 用 fetch 拉这个片段、innerHTML 塞进
+   #modal-root，若带上完整 <html> 会整页嵌进弹层，样式脚本全乱。
+★ 壳复用 .modal.fullscreen 骨架（已有全屏样式），不新造 z-index / 层级。
+{% endcomment %}
+<div class="modal fullscreen approval-modal">
+  {% comment %}
+  ★ 头部抽成独立片段（2026-11-11）：审批对话归档/合并草稿后，头里的两处
+    计数要作为 oob 片段跟着刷新，不抽出来就没法只换这一块。
+  {% endcomment %}
+  {% include "wiki/_approval_head.html" %}
+  <div class="modal-body approval-shell">
+    {# ① draft 列表：抽成独立模板，set 成功后由 approval_chat_send 作为 hx-swap-oob 片段刷新 #}
+    {% include "wiki/_approval_list.html" %}
+
+    {# ② 主工作区双栏：默认选中第一页 #}
+    {% include "wiki/_approval_workarea.html" %}
+
+    {# ③ 对话 panel（5b）：常显主入口。④ 对话 list 降级为「③ 内含清空 + 完整滚动历史」，见规格 §二改动3 #}
+    {% include "wiki/_approval_chat.html" with err=chat_err %}
+  </div>
+</div>

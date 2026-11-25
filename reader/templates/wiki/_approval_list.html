@@ -1,0 +1,48 @@
+{% comment %}
+审批浮层 ① draft 列表（第五步 5a 抽出，5b 供 hx-swap-oob 刷新）。
+★ 根节点必须 id="approval-list"：htmx 切换页时 hx-target="#approval-list"
+  hx-swap="outerHTML" 替换的就是它，返回片段根节点必须同名。
+★ oob 由调用方传：浮层壳首次 include 时不带（正常渲染），OOB 刷新时带
+  （hx-swap-oob 属性只在 htmx 处理响应交换时才有意义）。
+★ 不带 href：<a href="#..."> 会把 URL 改成 /wiki#anchor，规格明确「不刷 URL」；
+  htmx 的 hx-get 不依赖 href，手型光标由 CSS 补。多行注释一律 comment 标签。
+★ 审批标记：每项前面加个圆圈，点击切换已审批/未审批状态。已审批的显示 ✓。
+{% endcomment %}
+<aside class="approval-list" id="approval-list"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if drafts %}
+  <div class="approval-progress meta">
+    已审 {{ approved|length }}/{{ drafts|length }}
+  </div>
+  {% endif %}
+  {% for d in drafts %}
+  {% comment %}
+  ★ 不带 href：浏览器默认行为会把 URL 改成 /wiki#anchor。htmx 的 hx-get 不依赖
+    href，缺 href 时照样发请求；手型光标由 CSS 的 cursor:pointer 补回。
+  ★ 多行注释必须用 comment 标签：Django 的单行 {# #} 只吃单行，写成多行会
+    原样渲染到页面上（真浏览器截图才看得见，DOM 结构断言抓不到）。
+  ★ 审批标记：圆圈按钮，点击切换状态。已审批的显示 ✓ + 半透明。
+  ★ 编号用 d.draft_id（稳定自增 id）而非 forloop.counter：位置编号会随合并/拆分/
+    重排跳变，人说的「D2」下一轮就指了别的稿（2026-11-13 用户拍板改稳定 id）。
+  {% endcomment %}
+  <div class="approval-draft-row{% if d.slug == selected_slug %} is-active{% endif %}">
+    <button class="approval-toggle{% if d.slug in approved %} is-approved{% endif %}"
+            hx-get="/wiki/approval/toggle?slug={{ d.slug }}&selected_slug={{ selected_slug }}"
+            hx-target="#approval-list" hx-swap="outerHTML"
+            title="{% if d.slug in approved %}取消审批标记{% else %}标记为已审批{% endif %}">
+      {% if d.slug in approved %}✓{% endif %}
+    </button>
+    <a class="approval-draft"
+       hx-get="/wiki/approval/draft?slug={{ d.slug }}"
+       hx-target="#approval-workarea" hx-swap="outerHTML"
+       tabindex="0">
+      <b>D{{ d.draft_id }} · {{ d.title }}</b>
+      <span class="meta">
+        {% if d.delete %}删除 wiki/{{ d.edits }}.md{% elif d.edits %}编辑 wiki/{{ d.edits }}.md{% elif d.merges %}并入 wiki/{{ d.merges }}.md{% else %}{{ d.domain|default:"域缺失" }}{% endif %}
+        · {% if d.delete %}删页提案（在右侧逐条定候选去向）{% else %}{{ d.candidates|length }} 条候选{% endif %}
+      </span>
+    </a>
+  </div>
+  {% empty %}
+  <div class="empty">还没有待审批草稿。</div>
+  {% endfor %}
+</aside>

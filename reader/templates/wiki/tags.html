@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}标签总览{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>标签总览</h2>
+    <div class="page-actions">
+      <a class="btn" href="/wiki">回到知识库</a>
+    </div>
+  </div>
+
+  {% comment %}
+  ★ 这一页回答的是「我过完这一遍，到底收敛成什么样了」——所以第一行必须是
+    可以跟自己比对的数字（词数 / 实例数 / 复用率），不是形容词。
+  ★ 复用率 = 1 - 词数/实例数。它衡量的是「同一个词被重复使用」的程度，
+    不是「标签好不好」：全是一次性专名的库，复用率低也不代表标得差。
+  {% endcomment %}
+  <p class="meta">
+    <b>{{ pages_all_total }}</b> 页 · <b>{{ vocab }}</b> 个词 · <b>{{ inst }}</b> 个标签实例 ·
+    复用率 <b>{% if reuse_pct is None %}—{% else %}{{ reuse_pct }}%{% endif %}</b>
+    <br>
+    域是受控分类（单继承，一页只落一个）；标签是横切补充（一页可多个）。
+    下面按「覆盖多少页」排序 —— 用得越多的词越靠前，说明它已经是别人也认的概念。
+  </p>
+
+  <div class="panel">
+    <div class="panel-head">
+      <b>共用的词 {{ multi|length }}</b>
+      <span class="meta">至少被 2 页用上，已经能当导航用；点词筛出那些页</span>
+    </div>
+    {% if multi %}
+    <table class="cgrid">
+      <thead>
+        <tr><th>标签</th><th>页数</th><th>哪些页</th></tr>
+      </thead>
+      <tbody>
+        {% for r in multi %}
+        <tr>
+          <td><a class="wiki-tag" href="/wiki?tag={{ r.tag|urlencode }}"
+                 title="只看带「{{ r.tag }}」的页">{{ r.tag }}</a></td>
+          <td>{{ r.n }}</td>
+          <td>
+            {% comment %}
+              ★ 把「哪些页」列出来，是因为判断该不该合靠的就是它：
+                「AI风险」和「安全」各 2 页，如果指的是同一批页 → 该合；
+                是两批不同的页 → 是两个概念，别动。光看页数看不出来。
+            {% endcomment %}
+            {% for p in r.pages %}<a href="/wiki/page?p={{ p.page|urlencode }}">{{ p.title }}</a>{% if not forloop.last %}<span class="meta"> · </span>{% endif %}{% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">还没有被两页以上共用的词 —— 词表全是各说各的。</div>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <b>只用过一次的词 {{ single|length }}</b>
+      <span class="meta">还没被第二篇认领。能并进上面某个词的，就并掉；确实是专名（人名 / 公司 / 产品）的，留着也不亏</span>
+    </div>
+    {% if single %}
+    {% comment %}
+      ★ 用 chip 云而不是 56 行表格：这一堆的**数量本身**就是信息（「原来还有
+        这么多各说各的」）。压成紧凑的一团，比排成一长列更容易看出规模。
+      ★ 每个 chip 的 tooltip 挂着它唯一那页的标题 —— 判断「这词是该并还是该留」
+        得知道它出现在哪。桌面 hover 可见；点进去也能筛。
+    {% endcomment %}
+    <div class="tagcloud">
+      {% for r in single %}
+      <a class="wiki-tag" href="/wiki?tag={{ r.tag|urlencode }}"
+         title="{{ r.pages.0.title }}">{{ r.tag }}</a>
+      {% endfor %}
+    </div>
+    <p class="meta" style="padding:0 12px 10px">鼠标停住看它挂在哪一页。</p>
+    {% else %}
+    <div class="empty">每个词都被用过两次以上 —— 没有长尾。</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

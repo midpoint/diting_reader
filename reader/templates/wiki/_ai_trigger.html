@@ -1,0 +1,23 @@
+{% comment %}
+「问AI」入口（只此一处文字：问AI）。
+
+★ 不再做悬浮 icon（用户 2026-10-31 要求）：浮动按钮会压正文、且和页头动作区
+  抢位置。现在它就是一个普通按钮，跟着页面走：
+    · feed 文章 → .detail-actions 里，「原文」左边
+    · 日报/周报 → .page-actions 里
+
+★ 为什么按钮和浮窗要拆成两个模板：浮窗必须留在正文之后（它是 .article-tools
+  的一部分，跟着正文一起被 htmx 换掉），而按钮要出现在页头。两者靠
+  `data-ai-target="ai-panel-<type>-<id>"` 关联 —— 不在同一个 DOM 子树里，
+  所以不能用 closest 找父容器（上一版就是这么找的，改版后必须换 id 关联）。
+
+★ 参数：source_type / source_id 必需。
+  ★ 不接 autosend：那是浮窗的行为，只有 _article_tools.html 需要（两处都传同一个
+    字符串就会漂 —— 一边写着「自动总结」另一边没自动发，比不写更糟）。
+{% endcomment %}
+<button class="ai-trigger" type="button" data-ai-toggle
+        data-ai-target="ai-panel-{{ source_type }}-{{ source_id }}"
+        aria-expanded="false"
+        aria-controls="ai-panel-{{ source_type }}-{{ source_id }}"
+        title="就这篇内容问 AI"
+        ><span class="ai-trigger-ico" aria-hidden="true">✦</span>问AI</button>

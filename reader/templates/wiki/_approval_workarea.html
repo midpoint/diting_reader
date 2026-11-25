@@ -1,0 +1,361 @@
+{% comment %}
+审批浮层② 主工作区双栏（第五步 5a，只读）。
+★ 根节点必须 id="approval-workarea"：htmx 切换页时 hx-target="#approval-workarea"
+  hx-swap="outerHTML" 替换的就是它，返回片段根节点必须同名，否则换错节点。
+★ 本模板不 extends base（openModal 塞片段，整页 html 会嵌进 modal-root）。
+{% endcomment %}
+<section id="approval-workarea" class="approval-workarea"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% comment %}
+  ★ 退稿失败提示放在分支之外：草稿不存在时走 empty 分支，放 else 里会静默消失。
+  {% endcomment %}
+  {% if discard_err %}
+  <div class="alert-bar is-bad">退稿未生效：{{ discard_err }}</div>
+  {% endif %}
+  {% if empty %}
+  <div class="empty">
+    <p><b>没有可预览的草稿。</b>{{ err|default:"" }}</p>
+  </div>
+  {% else %}
+  {% if title_err %}
+  <div class="alert-bar is-bad">标题未改：{{ title_err }}</div>
+  {% endif %}
+  {% comment %}
+  ★ 标题行（2026-11-11 起可点击直改标题）：不显示 Dn —— 左侧列表已有序号，
+    这里再重复一遍没有信息量；标题本身变成可点按钮，点开就地编辑（见
+    _approval_title.html），改名走与审批对话同一套 wa.set("title") 链。
+  {% endcomment %}
+  {% include "wiki/_approval_title.html" %}
+
+  {% comment %}
+  ★ 标签就地改（2026-11-16）：删页提案不显示 —— 这份稿入库后页就没了，改它的
+    标签没有任何去处，写进去只是给「即将消失的文件」添噪音。
+  ★ 位置紧跟标题：标签和标题都是「这页是什么」的一句话，改动代价同级。
+  {% endcomment %}
+  {% if not delete %}
+  {% include "wiki/_approval_tags.html" %}
+  {% endif %}
+
+  {% comment %}
+  ★ 单页退稿（2026-11-09 从首页工作台搬来）：首页草稿卡下线后这里是唯一退稿入口。
+    理由走表单字段（utf-8 body），不用 hx-prompt（HTTP 头 latin-1 装不下中文，实测）。
+    ★ 2026-11-13 起成功**不整页刷新、不关浮层**：服务端一次刷工作区 / 列表 /
+      头部计数 / ③ 对话区，选中落到下一份；失败回本片段挂 discard_err。
+      整页通过仍只有右上「提交入库」（先全验后全动）。
+  {% endcomment %}
+  <form class="inline-form approval-discard" hx-post="/wiki/discard"
+        hx-target="#approval-workarea" hx-swap="outerHTML"
+        hx-confirm="把这份草稿退进 .discarded/（不删，可回看）？只挂在这份稿上的候选会一并废弃，不再自动重编（候选面板可改判回待审）。">
+    {% csrf_token %}
+    <input type="hidden" name="from" value="approval">
+    <input type="hidden" name="slug" value="{{ slug }}">
+    <input class="discard-reason" type="text" name="reason"
+           placeholder="退稿理由（可留空，会写进 log.md）" autocomplete="off">
+    <button class="btn" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>退稿…</button>
+  </form>
+
+  {% if delete %}
+  <div class="alert-bar">
+    🗑️ 这是 <code>wiki/{{ edits }}.md</code> 的<b>删除请求</b>：提交后这一页会从库里
+    移除。页内候选<b>默认全部废弃</b>（标记为已丢弃、不再参与编译），但可以在
+    <b>下方逐条把有用的判断留去别的页</b> —— 只有标记为废弃的候选才真删。
+    旧版会自动备份到 <code>.drafts/.merged/</code>。
+  </div>
+  {% elif edits %}
+  <div class="alert-bar">
+    ✏️ 这是 <code>wiki/{{ edits }}.md</code> 的<b>替换稿</b>：提交后会整页覆盖那一页
+    （旧版自动备份）。原页现在仍是仓库里的版本，编辑期间不受影响。
+    候选可以从这页拆去别的页，<b>减少是允许的</b>。
+  </div>
+  {% elif merges %}
+  {% comment %}
+  ★ 并入 = 覆盖一页已入库的知识（阶段 2.3d，2026-11-09 从首页草稿卡搬来）：
+    必须把「覆盖哪一页、动了什么」摆在前面，只给新正文等于让人凭记忆比。
+  {% endcomment %}
+  <div class="alert-bar merge-bar">
+    这份草稿不是新页，而是<b>改写</b> <code>{{ merge_page.page|default:merges }}</code> ——
+    提交入库后覆盖它。旧版会备份到 <code>.drafts/.merged/</code>，不会丢。
+    {% if not merge_page %}<b>目标页现在读不到</b>，提交会被拒（先确认它还在）。{% endif %}
+    {% if merge_new_n or merge_hist_n %}
+      <br>本批<b>新增 {{ merge_new_n }}</b> 条候选，另含该页已有的 <b>{{ merge_hist_n }}</b> 条历史候选（已标「新增」徽标）。
+    {% endif %}
+  </div>
+  {% if diff %}
+  <details class="draft-diff">
+    <summary>看改动（−{{ n_del }} / +{{ n_ins }}）</summary>
+    <pre class="diff">{% for x in diff %}<span class="diff-{{ x.kind }}">{{ x.text|default:" " }}</span>
+{% endfor %}</pre>
+  </details>
+  {% endif %}
+  {% endif %}
+
+  {% comment %}
+  第十步：删页提案的逐条候选取向。★ 时机是**提案阶段**（页还在、权威清单还在），
+  不是 commit 之后 —— 第九步断链面板那个「先拆走再删」正是放错位置才不可达。
+  ★ 默认全废 = 第八步现状；人点一下「留」程序就生成目标页的编辑草稿，
+    找清单 / 判落点 / 动手改三件脏活都不用他做。
+  ★ 多行注释一律 comment 标签：{# #} 只吃单行，换行会原样渲染到浮层左上角
+    （第五步 5a 的 21 条断言全绿、只有真浏览器截图看得见）。
+  {% endcomment %}
+  {% if retire.ok %}
+  <div class="panel retire-panel" id="retire">
+    <div class="panel-head">
+      <b>删页提案 · 逐条定候选去向</b>
+      <span class="meta">
+        默认全废（{{ retire.retired_n }} 条）；要留就选一页，程序生成编辑草稿，
+        你在「整批入库」里确认后才生效。
+        已留 {{ retire.moved_n }} 条
+      </span>
+    </div>
+
+    {% if retire_err %}
+    <div class="alert-bar is-bad">未生效：{{ retire_err }}</div>
+    {% endif %}
+    {% if retire.guard_rings %}
+    <div class="alert-bar is-bad">
+      候选去向守恒未通过：{{ retire.conservation }}
+      —— 这不是提示被擦掉，是清单真没对上，整批入库会拒收。
+    </div>
+    {% endif %}
+    {% if retire.old_format %}
+    <div class="alert-bar is-bad">
+      这是一份旧格式删除稿（没有 <code>retire</code> 字段），按整页废弃处理，
+      逐条去向未生效；要逐条留请退掉它再重新发起删除请求。
+    </div>
+    {% endif %}
+
+    {% for c in retire.items %}
+    <article class="retire-row">
+      <div class="retire-head">
+        <code>#{{ c.id }}</code>
+        <b>{{ c.claim }}</b>
+        <span class="meta">
+          {% if c.state == "moved" %}已留 → <code>{{ c.target }}</code>
+          {% else %}待废弃{% endif %}
+        </span>
+      </div>
+      {% if c.quote %}<blockquote class="cand-quote">{{ c.quote }}</blockquote>{% endif %}
+      <div class="meta">{{ c.published_at }} · {{ c.source }}</div>
+
+      {% if c.state == "retired" %}
+      <div class="meta">
+        {% if c.recommend %}推荐去向：
+          {% for r in c.recommend %}<code>{{ r }}</code>{% if not forloop.last %}、{% endif %}{% endfor %}
+        {% else %}库里没有相近的页，建议新建一页{% endif %}
+      </div>
+      <form class="inline-form" hx-post="/wiki/retire/apply"
+            hx-target="#approval-workarea" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="slug" value="{{ retire.slug }}">
+        <input type="hidden" name="cand_id" value="{{ c.id }}">
+        <input type="hidden" name="action" value="move">
+        <select name="target" class="mini-select">
+          <option value="__new__">新建页</option>
+          {% for t in retire.targets %}
+          <option value="{{ t.slug }}"{% if t.slug in c.recommend %} selected{% endif %}>
+            {{ t.title }}（{{ t.slug }}）{% if t.slug in c.recommend %} · 推荐{% endif %}{% if t.has_draft and not t.is_mover %} · 已有待审草稿{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <input type="text" name="new_slug" class="mini-input" placeholder="新页名（默认 {{ retire.new_slug }}）">
+        <input type="text" name="title" class="mini-input" placeholder="新页标题（可选）">
+        <button class="btn mini" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>留 → 去这页</button>
+      </form>
+      {% else %}
+      <form class="inline-form" hx-post="/wiki/retire/apply"
+            hx-target="#approval-workarea" hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="slug" value="{{ retire.slug }}">
+        <input type="hidden" name="cand_id" value="{{ c.id }}">
+        <input type="hidden" name="action" value="retire">
+        <button class="btn mini" type="submit" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>撤回 → 废弃</button>
+      </form>
+      {% endif %}
+    </article>
+    {% empty %}
+    <div class="empty">这页没有挂候选，直接确认删除即可。</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% comment %}
+  ★ 重编失败 / 互斥原因**独立于 body_stale**：stale 可能在成功重编后被剥掉，
+    但这次点击失败的提示仍要在页面上看得见（不能只发会消失的 toast）。
+  {% endcomment %}
+  {% if repolish_err %}
+  <div class="alert-bar is-bad">重编结论未能完成：{{ repolish_err }}</div>
+  {% endif %}
+
+  {% if body_stale %}
+  <div class="alert-bar">
+    ⚠️ 分组已由审批对话调整：结论还没重编成功，正文可能仍是上一版。
+    当前真相是 frontmatter 的 <code>candidates</code> 与左栏候选明细；重编结论后再提交。
+    {% comment %}
+    ★ 2026-11-22「不要让用户思考」：光说「重编后再提交」而不给按钮，不熟悉的人
+      不知道下一步干什么。按钮就放在这条警告里，点一下 = 显式 POST 花钱重编
+      （落点 wiki_loop._polish_one，与审批对话同一份判据）；渲染本片段零 LLM。
+    ★ 2026-11-23：`hx-disabled-elt="find button"` 与编译/审批对话同一套——重编要跑
+      十几秒，不禁用就会连点出多次模型调用。请求结束工作区整体替换，按钮自然消失
+      （成功）或恢复（失败），不需要在 JS 里记得解禁。
+    {% endcomment %}
+    <form class="inline-form" hx-post="/wiki/approval/repolish"
+          hx-target="#approval-workarea" hx-swap="outerHTML"
+          hx-disabled-elt="find button">
+      {% csrf_token %}
+      <input type="hidden" name="slug" value="{{ slug }}">
+      <button class="btn mini" type="submit"
+              {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>重编结论</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if missing %}
+  <div class="alert-bar">缺 frontmatter 字段：<b>{{ missing|join:"、" }}</b></div>
+  {% endif %}
+
+  {% comment %}
+  ★ 可能相关的已入库页（2026-11-11 用户定「推荐还是走 LLM 的好」；
+    2026-11-15 用户定「应该是默认调用的」）：
+    LLM 宽口径推荐 → 带指纹的缓存（meta/related.json）→ 这里只读缓存渲染。
+    ★★ 本工作区片段被 13 处渲染路径复用（含审批对话后的 OOB 刷新），
+      绝不许在这里起模型：刷一次花一次钱。花钱点始终是
+      /wiki/approval/related 那个 POST，只不过现在由下方的自动表单默认发出，
+      人点按钮变成「强制重查」。
+    ★ 推荐 ≠ 决定：模型只列「值得看一眼」，人点「改为并入」才算数，提交时
+      照旧显示 diff、旧版照旧备份。
+    ★ 没查过 / 已过期 / 查过没有，三种状态都要有话说，不能静默空白 ——
+      「没有相关页」和「还没查」是两件完全不同的事。
+  {% endcomment %}
+  {% if merge_err %}
+  <div class="alert-bar is-bad">{{ merge_err }}</div>
+  {% endif %}
+  {% if ordinary %}
+  <div class="related-bar" id="related-pages">
+    {% if related_err %}<div class="alert-bar is-bad">{{ related_err }}</div>{% endif %}
+    {% if related_note %}<div class="meta">{{ related_note }}</div>{% endif %}
+
+    {% if related_state == "none" %}
+    <div class="related-head">还没查过库里是否有相关的已入库页。</div>
+    {% elif related_state == "stale" %}
+    <div class="related-head">草稿或库已经变了，上次推荐的结论已过期，建议重查。</div>
+    {% elif related %}
+    <div class="related-head"><b>模型推荐：库里可能有相关的已入库页</b> —— 若这页在回答同一问题，可以改成并入（提交时会显示改动 diff，旧版自动备份）；否则保持新页不动。</div>
+    {% for r in related %}
+    <form class="inline-form related-row" hx-post="/wiki/approval/merge-into"
+          hx-target="#approval-workarea" hx-swap="outerHTML"
+          hx-confirm="把这份草稿并入「{{ r.title }}」？已有并入该页的草稿就追加进去，没有才新建一份；会重编那页的结论（一次模型调用），通过后覆盖它。">
+      {% csrf_token %}
+      <input type="hidden" name="slug" value="{{ slug }}">
+      <input type="hidden" name="target" value="{{ r.slug }}">
+      <button class="btn mini" type="submit" id="merge-into-{{ r.slug }}" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>改为并入 → {{ r.title }}</button>
+      <span class="meta">{{ r.why }} · {{ r.domain }}</span>
+    </form>
+    {% endfor %}
+    {% else %}
+    <div class="related-head">模型查过：没有找到值得看一眼的相关页 —— 若你知道该并进哪一页，用下面「自己指定一页并入」；否则保持新页即可。</div>
+    {% endif %}
+
+    {% comment %}
+    ★ 2026-11-13：查相关页只是**只读推荐 + 一次可重试的模型调用**，不是危险
+      操作，不弹二次确认。真会改数据的两处（退稿归档 / 改为并入覆盖已入库页）
+      仍各自带确认 —— 别把「去掉一处确认」做成「把所有确认都删了」。
+    {% endcomment %}
+    <form class="inline-form" hx-post="/wiki/approval/related"
+          hx-target="#approval-workarea" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="slug" value="{{ slug }}">
+      <button class="btn mini" type="submit" id="related-refresh" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>{% if related_state == "fresh" %}重新查一次{% else %}找找相关页{% endif %}（一次模型调用）</button>
+    </form>
+
+    {% comment %}
+    ★ 手动指定并入目标（2026-11-16 用户实测 D87）：模型推荐只列它**想得起来**的
+      页，想不起来时整块推荐是空的 —— 而人明明知道该并进哪一页，却没有第二个
+      入口，一份草稿就只能干看着（D87：缓存 rows=[]，2 条候选无处可去）。
+      下拉直接列**全部已入库页**，零模型、零额外 IO（复用同一次 pages()）。
+      「推荐 ≠ 决定」，反过来也成立：没人推荐 ≠ 不许人决定。
+    ★ 目标仍是**已入库页**（草稿永不作为并入目标 —— 那等于两份待审稿互相覆盖）；
+      去向已定（edits / merges / delete）的稿不给这块，判据在
+      `merge_draft_into` 的 `draft_direction`，这里只按 `merge_targets` 显隐。
+    {% endcomment %}
+    {% if merge_targets %}
+    <form class="inline-form related-manual" id="merge-manual-form"
+          hx-post="/wiki/approval/merge-into"
+          hx-target="#approval-workarea" hx-swap="outerHTML"
+          hx-confirm="把这份草稿并入所选页？会重编那页的结论（一次模型调用），通过后覆盖它、旧版备份在 .drafts/.merged/。">
+      {% csrf_token %}
+      <input type="hidden" name="slug" value="{{ slug }}">
+      <label class="meta" for="merge-target">模型没推荐？自己指定一页并入：</label>
+      <select name="target" id="merge-target">
+        <option value="">（选一页）</option>
+        {% for t in merge_targets %}<option value="{{ t.slug }}">{{ t.title }} · {{ t.domain }}</option>{% endfor %}
+      </select>
+      <button class="btn mini" type="submit" id="merge-manual-go" {% if mutex_msg %}disabled title="{{ mutex_msg }}"{% endif %}>并入所选页</button>
+    </form>
+    {% endif %}
+
+    {% comment %}
+    ★ 2026-11-15「默认调用」：打开审批浮层时自动发一次 POST，而**不是**在渲染里
+      调模型。openModal 用 innerHTML + htmx.process(layer)，OOB swap 也是重新把
+      片段插进 DOM —— 两种情况下 `hx-trigger="load"` 都会点火。模型仍只在
+      approval_related 那个 POST 里，13 个渲染路径零 LLM 不变。
+    ★★ 防循环三道闸（少一道就是「失败 → 重渲染 → 又自动发」无限打）：
+      ① related_state == fresh（已有有效推荐，含「查过但没有」）
+      ② related_err 非空（这次失败了，绝不自动重试）
+      ③ related_auto（本片段就是那次 POST 的回包，见 approval_related.respond）
+      外加 mutex_msg：编译中不点火，改用下面的可见文字说明，不留静默空白。
+    ★ 用户定的边界：草稿/库变化导致 stale **也自动重查**，信息保持最新；
+      缓存命中在 POST 里短路，命中态零调用；成本写在回包的 related_note 里。
+    ★ 没给自动表单加 hx-sync：万一自动请求在飞时人手点了重查，两次 recommend
+      都写同一 slug 的缓存、结果一致，最后到的响应 swap 同一 target；加同步
+      反而可能把人的那次点掉。宁可多一次调用，也不让按钮点了没反应。
+    {% endcomment %}
+    {% if related_state != "fresh" and not related_err and not mutex_msg and not related_auto %}
+    <div class="meta" id="related-auto-tip">正在自动查相关页…（一次模型调用；命中缓存不花钱）</div>
+    <form class="inline-form related-auto-form" id="related-auto-form"
+          hx-post="/wiki/approval/related"
+          hx-target="#approval-workarea" hx-swap="outerHTML"
+          hx-trigger="load" style="display:none">
+      {% csrf_token %}
+      <input type="hidden" name="slug" value="{{ slug }}">
+      <input type="hidden" name="auto" value="1">
+    </form>
+    {% endif %}
+    {% if mutex_msg and related_state != "fresh" and not related_auto %}
+    <div class="meta">编译进行中，暂不自动查相关页；结束后重新打开审批浮层即可。</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="approval-cols">
+    {# 左栏：候选分组（claim / quote / published_at / source） #}
+    <div class="approval-left">
+      {% for c in candidate_detail %}
+      <article class="cand-card{% if c.is_new %} is-new{% endif %}" title="{{ c.tip }}">
+        <div class="cand-head">
+          <b>#{{ c.cand_id }} · {{ c.claim }}</b>
+          {% if c.is_new %}<span class="badge-new">新增</span>{% endif %}
+          <span class="meta">{{ c.group_label }}</span>
+        </div>
+        <blockquote class="cand-quote">{{ c.quote }}</blockquote>
+        <div class="cand-actions">
+          <span class="meta">{{ c.published_at|default:"发布时间未知" }} · {% if c.source_url %}<a href="{{ c.source_url }}" target="_blank" rel="noopener" title="在新窗口打开原文">{{ c.source }}</a>{% else %}{{ c.source }}{% endif %}</span>
+        </div>
+      </article>
+      {% empty %}
+      <div class="empty">本页没有候选（frontmatter 的 candidates 为空或已丢弃）。</div>
+      {% endfor %}
+      {% if unknown_candidates %}
+      <div class="meta">另有 {{ unknown_candidates|length }} 条候选 id 已不存在或已丢弃。</div>
+      {% endif %}
+    </div>
+
+    {# 右栏：正文预览（形态 A：纯 polish 一段，无候选清单、无结构标题） #}
+    <div class="approval-right">
+      {% if body_blank %}
+      <div class="meta">结论待重生成：这页还没有正文；左栏候选明细是分组的真相。</div>
+      {% else %}
+      <article class="report">{{ body_html|safe }}</article>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</section>

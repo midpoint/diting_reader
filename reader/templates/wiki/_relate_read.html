@@ -1,0 +1,32 @@
+{% comment %}
+★ 「知识库里讲这个的页」（2026-11-16 晚）
+
+为什么挂在读完正文之后、而不是顶部：顶部是「这篇在讲什么」，读者还没看正文，
+给一堆别处的页名只会分心。读完之后的想法是「这个我是不是想过」，那才是这个
+组件要接的时刻。
+
+★ 空则不渲染。读一篇文章看到「0 页相关」是噪声；而「没显示」本身已经传达了
+  「这次没有」。
+★ 每行都带理由（`why`）。`core.wiki_relate.relate()` 保证 `why` 非空才返回 ——
+  说不出理由的推荐，人第一次点进去就不会有第二次。
+★ `page` 是相对路径 `wiki/<domain>/<slug>.md`，详情页吃 `?p=` 这个 query（见
+  apps/wiki/urls.py 里为什么不用 URL 通配）。
+★ 一律新标签页（用户 2026-11-16 指定）：阅读页是「正在读的书」，点一下关联就
+  把书关掉太贵了。同一个 `rel="noopener"` 契约，与「打开原文」一致。
+{% endcomment %}
+{% if wiki_relate %}
+<div class="read-relate">
+  <div class="read-relate-head">
+    <span class="read-relate-label">知识库</span>
+    <span class="read-relate-note">{{ wiki_relate|length }} 页讲这个</span>
+  </div>
+  {% for r in wiki_relate %}
+  <a class="read-relate-row" href="/wiki/page?p={{ r.page|urlencode }}"
+     target="_blank" rel="noopener"
+     title="在新标签页打开「{{ r.title }}」">
+    <span class="read-relate-title">{{ r.title }}</span>
+    {% for w in r.why %}<span class="read-relate-why">{{ w }}</span>{% endfor %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

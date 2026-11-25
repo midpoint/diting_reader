@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}日报 {{ day|date:"Y-m-d" }}{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>日报 · {{ day|date:"Y-m-d" }}</h2>
+    <div class="page-actions">
+      {% comment %}
+      ★ 「问AI」放最前：它是读日报时的主动作（重跑/回列表是维护性动作），
+        而且和文章页一样是页头内联按钮，不再有浮动图标。
+      {% endcomment %}
+      {% include "wiki/_ai_trigger.html" with source_type="report" source_id=marks_source_id %}
+      {% if neighbors.prev %}<a class="btn" href="/summary/{{ neighbors.prev|date:'Y-m-d' }}">← {{ neighbors.prev|date:"m-d" }}</a>{% endif %}
+      {% if neighbors.next %}<a class="btn" href="/summary/{{ neighbors.next|date:'Y-m-d' }}">{{ neighbors.next|date:"m-d" }} →</a>{% endif %}
+      <form class="inline-form" data-async="/summary/run"
+            data-msg="正在重跑 {{ day|date:'Y-m-d' }}…">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+        <input type="hidden" name="force" value="1">
+        <button class="btn" type="submit" title="后台重跑这一天（覆盖同名文件；S3/S2/S1 命中缓存时复用）">重跑</button>
+      </form>
+      <form class="inline-form" data-async="/summary/run"
+            data-msg="正在忽略缓存重跑 {{ day|date:'Y-m-d' }}…">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+        <input type="hidden" name="force" value="1">
+        <input type="hidden" name="no_cache" value="1">
+        <button class="btn" type="submit"
+                title="跳过 S3/S2/S1 缓存，强制重新调用模型（S0 本来就不缓存）">忽略缓存重跑</button>
+      </form>
+      <a class="btn" href="/summary">回列表</a>
+    </div>
+  </div>
+
+  {% if row %}
+  <p class="meta">
+    状态 <b>{{ row.get_state_display }}</b>
+    {% if row.catch_up %}· 补跑{% endif %}
+    {% if row.attempt > 1 %}· 第 {{ row.attempt }} 次尝试{% endif %}
+    · 窗口 {{ row.window_start|date:"Y-m-d H:i" }} → {{ row.window_end|date:"Y-m-d H:i" }}
+    {% if row.finished_at %}· 完成于 {{ row.finished_at|date:"Y-m-d H:i" }}{% endif %}
+    · <code>{{ path }}</code>
+  </p>
+  {% if row.error %}<div class="alert-bar">运行备注：{{ row.error }}</div>{% endif %}
+  {% else %}
+  <p class="meta">db 里没有这一天的运行记录，但磁盘上存在同名报告文件。<code>{{ path }}</code></p>
+  {% endif %}
+
+  <div class="panel">
+    <article class="report" id="article-body-report-{{ marks_source_id }}">{{ body|safe }}</article>
+  </div>
+
+  {% include "wiki/_article_tools.html" with source_type="report" source_id=marks_source_id highlights=marks.highlights annotations=marks.annotations err=marks.err undisplayed=marks_undisplayed body_selector="article.report" %}
+</div>
+{% endblock %}

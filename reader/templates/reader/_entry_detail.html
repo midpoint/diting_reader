@@ -1,0 +1,62 @@
+{% load reader_tags %}<div id="tree" hx-swap-oob="true">{% include "reader/_tree_body.html" %}</div>
+{% comment %}
+★ 「打开原文」的命中区（2026-10-16 改）
+  原来只有 meta 行末尾一个 12px 的「原文 ↗」，想跳原文得瞄准那个小字，很难点。
+  现在给三个入口，分别对应三个不同的时机，且都保留原列表的手风琴状态（一律新标签页）：
+
+    ① 右上角胶囊按钮 .orig-btn —— 一打开就看见，明确写着「原文」；和 ✕ 并排成动作区
+    ② 正文标题 .orig-title    —— 视线本来就落在标题上，整块都是链接（含 ↔ 的 padding 外扩）
+    ③ 正文末尾 .orig-foot     —— 长文读到底时头部早已滚出视野，末尾再给一条整行可点
+
+  ★ 三处的 href 都是同一个 entry.url，不做任何改写/跳转判定。
+  ★ 不要用多行 {# #}（只吃单行，会渲染成正文），多行注释一律 {% comment %}。
+{% endcomment %}
+<div class="detail">
+  <div class="detail-head">
+    <div class="detail-meta">
+      {{ entry.feed_title }} · {{ entry.published_at|reldt }}
+      {% if entry.author %} · {{ entry.author }}{% endif %}
+      {% if entry.reading_time %} · 约 {{ entry.reading_time }} 分钟{% endif %}
+    </div>
+    <div class="detail-actions">
+      {% comment %}
+      ★ 「问AI」放在「原文」左边（用户 2026-10-31 指定）：两个都是关于这篇的
+        主动作，挨在一起比一个浮标更可发现，也不挡正文。
+      {% endcomment %}
+      {% include "wiki/_ai_trigger.html" with source_type="entry" source_id=entry.id %}
+      {% if entry.url %}
+      <a class="orig-btn" href="{{ entry.url }}" target="_blank" rel="noopener"
+         title="在新标签页打开原文：{{ entry.url }}">原文 ↗</a>
+      {% endif %}
+      <button class="close" type="button" onclick="closeDetail(this)" title="收起">✕</button>
+    </div>
+  </div>
+  <h2 class="detail-title">
+    {% if entry.url %}<a class="orig-title" href="{{ entry.url }}"
+        target="_blank" rel="noopener" title="在新标签页打开原文：{{ entry.url }}"
+        >{% if translation and translation.title_zh != entry.title %}{{ translation.title_zh }}{% else %}{{ entry.title }}{% endif %}<span class="orig-mark" aria-hidden="true">↗</span></a>{% else %}{% if translation and translation.title_zh != entry.title %}{{ translation.title_zh }}{% else %}{{ entry.title }}{% endif %}{% endif %}
+    {% if translation and translation.title_zh != entry.title %}
+      <span class="detail-orig-title" lang="en">{{ entry.title }}</span>
+    {% endif %}
+  </h2>
+  <div class="detail-content" id="article-body-entry-{{ entry.id }}">{{ entry.content|safe }}</div>
+  {% include "wiki/_relate_read.html" %}
+  {% if entry.url %}
+  <div class="detail-foot">
+    <a class="orig-foot" href="{{ entry.url }}" target="_blank" rel="noopener"
+       title="在新标签页打开原文：{{ entry.url }}">
+      <span class="orig-foot-label">打开原文</span>
+      <span class="orig-foot-host">{{ entry.url|host }}</span>
+      <span class="orig-mark" aria-hidden="true">↗</span>
+    </a>
+  </div>
+  {% endif %}
+  {% comment %}
+  ★ feed 文章首次点开「问AI」会自动总结一次 —— 对齐小微/元宝总结公众号文章的
+    手感：点一下就有结果，不用先想问题。浮窗在右上角弹出（入口在右上，视线不跳）。
+  ★ 这句话的文本不在模板里写死：`core/ingest.py` 的分诊要把它排除（点开自动发的
+    那句不是「我敲的字」）。文案只定义一次，见 core/conversation.AUTOSEND_TEXT。
+  {% endcomment %}
+  {% load reader_tags %}{% autosend_text as autosend_ask %}
+  {% include "wiki/_article_tools.html" with source_type="entry" source_id=entry.id highlights=marks.highlights annotations=marks.annotations err=marks.err undisplayed=marks_undisplayed body_selector=".detail-content" dock_pos="top-right" autosend=autosend_ask %}
+</div>

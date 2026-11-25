@@ -1,0 +1,24 @@
+{% load reader_tags %}{% comment %}树上的一行 feed。★ 分类根下的裸 feed 与分组内的 feed 共用这一段，
+避免两处样式漂移。`data-feed` / `data-group` 给右键菜单用（0 = 未分组），
+`data-ord` = 本行所在那一层有没有手动排过序（`treeorder.apply` 给的），
+只有排过才在右键菜单里给「恢复默认顺序」—— 没排过给这一项就是个假动作。
+✖ 别在这里写多行 `{# #}` —— Django 的 `{# #}` 只吃单行，多行会原样渲染到页面上。{% endcomment %}
+<li class="node feed {% if f.unread %}has-unread{% endif %} {% if sel_kind == 'feed' and sel_id == f.id %}active{% endif %}"
+    draggable="true"
+    data-feed="{{ f.id }}" data-group="{{ f.group_id }}" data-cat="{{ cat.id }}"
+    data-ord="{% if f.layer_ordered %}1{% else %}0{% endif %}"
+    data-cfg="{% if f.has_cfg %}1{% else %}0{% endif %}"
+    data-translate="{% if f.translate %}1{% else %}0{% endif %}">
+  <div class="node-row">
+    <span class="spacer"></span>
+    <img class="favicon" src="{{ f.icon_url }}" alt="" loading="lazy">
+    {% if f.has_cfg %}<span class="lmark" title="已配置分级判据（{{ f.cfg_from }}）">L</span>{% endif %}
+    <a href="/?sel=feed:{{ f.id }}&{{ qs }}" hx-get="/hx/entries?sel=feed:{{ f.id }}&{{ qs }}"
+       hx-target="#entry-list" hx-push-url="true" title="{{ f.title }}"
+       draggable="false">{{ f.title }}</a>
+    {% if f.has_error %}<span class="warn" title="{{ f.error_msg }}">{% include "reader/_warn_icon.html" %}</span>{% endif %}
+    {% with st=fast_feeds|get_item:f.id %}{% if st %}<span class="fast" title="快速刷新已开启（每 {{ st.minutes }} 分钟）{% if st.last_fast_at %}，上次 {{ st.last_fast_at|reldt }}{% endif %}{% if st.error %}；上次失败：{{ st.error }}{% endif %}">↯</span>{% endif %}{% endwith %}
+    {% if f.translate %}<span class="tr{% if f.translate.running %} is-running{% endif %}" title="标题翻译已开启（最近 {{ f.translate.days }} 天，最多 {{ f.translate.max }} 条；已译 {{ f.translate.count }} 条{% if f.translate.error %}；上次失败：{{ f.translate.error }}{% endif %}）">译</span>{% endif %}
+    {% if f.unread %}<span class="count">{{ f.unread }}</span>{% endif %}
+  </div>
+</li>

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load reader_tags %}
+
+{% block title %}{{ title }} · 分级 prompt{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>{{ title }} · 分级 prompt</h2>
+    <div class="page-actions">
+      <a class="btn" href="/">← 回阅读器</a>
+      <button class="btn" hx-post="/triage/prompt/rebuild" hx-vals='{"feed": "{{ feed_id }}"}'
+              hx-swap="none">强制重建</button>
+    </div>
+  </div>
+
+  <p class="hint">
+    prompt <b>不可人工编辑</b> —— 由配置自动生成（AI 润色，不合格时回退规则版）。
+    要改判定口径请<b>右键 → 配置分级逻辑</b>改配置，再重建。
+  </p>
+
+  <h3>合并后的口径（分类 → feed 拼接）</h3>
+  <table class="grid">
+    <tr><th style="width:90px">级别</th><th>判据</th><th style="width:150px">来源</th></tr>
+    {% for seg in spec_levels %}
+    <tr>
+      <td>{{ seg.label }}</td>
+      <td class="wrap">{% if seg.text %}{{ seg.text|linebreaksbr }}{% else %}<i>未配置</i>{% endif %}</td>
+      <td>{% for p in seg.parts %}<span class="tag tag-{{ p.from }}">{{ p.src }}</span> {% endfor %}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td><b>默认</b></td>
+      <td colspan="2"><b>L{{ spec.default_level }}</b>（没命中任何判据 / 调用失败时归到这里）</td>
+    </tr>
+  </table>
+
+  <h3>当前生效版本</h3>
+  {% if active %}
+    <div class="meta">
+      v{{ active.version }} ·
+      <span class="tag">{{ active.get_built_by_display }}</span>
+      {% if active.validated %}<span class="tag ok">已通过校验</span>{% else %}<span class="tag bad">回退版</span>{% endif %}
+      · {{ active.created_at|reldt }} · {{ active.prompt_text|length }} 字符
+      {% if active.change_note %}· 变化：{{ active.change_note }}{% endif %}
+    </div>
+    <pre class="prompt-box">{{ active.prompt_text }}</pre>
+  {% else %}
+    <div class="empty">没有 prompt（四段全空 → 不调 LLM，一律 L{{ spec.default_level }}）。</div>
+  {% endif %}
+
+  <h3>历史版本（审计）</h3>
+  <table class="grid">
+    <tr><th>版本</th><th>方式</th><th>校验</th><th>时间</th><th>变化</th></tr>
+    {% for v in versions %}
+    <tr>
+      <td>v{{ v.version }}{% if v.status == 'active' %} ★{% endif %}</td>
+      <td>{{ v.get_built_by_display }}</td>
+      <td>{% if v.validated %}✓{% else %}—{% endif %}</td>
+      <td>{{ v.created_at|reldt }}</td>
+      <td class="wrap">{{ v.change_note }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" class="empty">尚无版本</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>底座（全局，不受任何 feed 配置影响）</h3>
+  <pre class="prompt-box">{{ base_rules }}</pre>
+</div>
+{% endblock %}

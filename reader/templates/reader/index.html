@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% load reader_tags %}
+
+{# 当前范围名（全部文章 / 分类 / 源 / 分组）—— 与工具栏标题同一份上下文 #}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="tb-left"><span id="toolbar-title" class="tb-title">{{ title }}</span></div>
+
+  <div class="tb-right">
+    <div class="dropdown">
+      {% include "reader/_mark_form.html" %}
+    </div>
+
+    <form id="filters" class="filters" hx-get="/hx/entries" hx-target="#entry-list"
+          hx-push-url="true" hx-sync="this:replace"
+          hx-trigger="change, keyup changed delay:400ms from:#id_q, submit">
+      <input type="hidden" name="sel" value="{{ filters.sel }}">
+
+      <!-- 所有 / 未读：整体是一个分段控件，选中的那段带高亮前景，没有独立 switch 按钮 -->
+      <div class="seg">
+        <input type="radio" name="status" value="all" id="seg-all"
+               {% if filters.status != 'unread' %}checked{% endif %}>
+        <label for="seg-all">所有文章</label>
+        <input type="radio" name="status" value="unread" id="seg-unread"
+               {% if filters.status == 'unread' %}checked{% endif %}>
+        <label for="seg-unread">未读文章</label>
+        <span class="seg-thumb" aria-hidden="true"></span>
+      </div>
+
+      <!-- 级别：多选下拉。★ 可以组合（只看 L0 / L1+L3 …），旧的「L2+」阈值表达不了这些。
+           勾选框只负责"人看"，真正提交的是 hidden levels（逗号分隔），
+           由 app.js 在 change 的捕获阶段同步 —— 必须早于 htmx 冒泡读表单。 -->
+      <div class="dropdown">
+        <button class="btn lv-btn" type="button" data-menu-toggle
+                title="按级别筛选（可多选）">
+          <span data-lv-label>{{ level_label }}</span>
+          <span class="lv-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="menu lv-menu" hidden data-keep-open>
+          {% for value, name, desc in level_filters %}
+          <label class="lv-opt" title="{{ desc }}">
+            <input type="checkbox" data-lv="{{ value }}"
+                   {% if value in filters.levels %}checked{% endif %}>
+            <span class="lv-name">{{ name }}</span>
+            <span class="lv-desc">{{ desc }}</span>
+          </label>
+          {% endfor %}
+          <div class="menu-sep"></div>
+          <button type="button" data-lv-reset>全部级别</button>
+        </div>
+      </div>
+      <input type="hidden" name="levels" value="{{ levels_value }}">
+
+      <input id="id_q" type="search" name="q" value="{{ filters.q }}" placeholder="搜索文章…" autocomplete="off">
+    </form>
+
+    {% comment %}
+    ★ 刷新当前范围（分类 / 分组 / 单源 / 全部）的**全部源**，不是"重新读一遍列表"。
+      真正的刷新在后台跑，这里只负责点亮 loading + 轮询状态；完成后由 app.js 重绘树与列表。
+    {% endcomment %}
+    <button class="icon-btn" id="btn-refresh" type="button" title="刷新当前范围的全部源">
+      <span class="ico" aria-hidden="true">⟳</span>
+      <span class="spin" aria-hidden="true"></span>
+    </button>
+  </div>
+</div>
+
+<div id="entry-list">
+  {% include "reader/_rows.html" %}
+</div>
+{% endblock %}

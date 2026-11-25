@@ -1,0 +1,27 @@
+{% comment %}
+柱图面板的内容（图例 + 柱子）。总览页与下钻页共用，避免两份样式/交互漂移。
+
+上下文：chart（costreport.by_day_range / by_hour 的返回）
+        day_link_base（多日柱点击的基址，如 /costs 或 /costs/feed/55）
+        day_link_extra（额外查询串，如 &sort=cost&dir=desc；下钻页为空）
+★ 单日（hour）柱子不可点；多日（day）点某根 → 当天单日视图。
+{% endcomment %}
+<div class="legend">
+  {% for k in chart.kinds %}
+  <span class="lg-item"><i class="sw k-{{ k.key }}"></i>{{ k.label }}</span>
+  {% endfor %}
+</div>
+<div class="bars {% if chart.mode == 'hour' %}bars-hour{% endif %}">
+  {% for r in chart.rows %}
+    {% if chart.mode == 'day' and day_link_base %}
+    <a class="bar-col bar-link"
+       href="{{ day_link_base }}?preset=custom&amp;start={{ r.date|date:'Y-m-d' }}&amp;end={{ r.date|date:'Y-m-d' }}{{ day_link_extra }}">
+      {% include "costs/_bar_col.html" %}
+    </a>
+    {% else %}
+    <div class="bar-col">
+      {% include "costs/_bar_col.html" %}
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>

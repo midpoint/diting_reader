@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}候选查询 · 谛听{% endblock %}
+
+{% comment %}
+第十一步：独立只读候选查询页。
+  ★ 首页删掉了 #ingest / #cands 两个「生产流水线中间态」面板；候选挪到这里。
+  ★ 2026-11-09 用户拍板：**纯查询**，丢弃/改判按钮也去掉 —— 提炼后马上编译，
+    候选几乎不停留在池里，已进草稿/页的候选丢弃必被守卫禁用（会让产物挂幽灵
+    引用），按钮恒灰 = 没有按钮。裁决在审批浮层做（移出分组/整页退稿）；
+    历史丢弃项要改判回待审，去首页回看区。如无必要勿增实体：这里不是加工区。
+{% endcomment %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>候选查询</h2>
+    <div class="page-actions">
+      <a class="btn" href="/wiki">← 返回知识库</a>
+    </div>
+  </div>
+
+  <p class="meta">
+    候选是「模型从我的原话和划线里挑出来的待沉淀判断」，<b>不是我的结论</b>。
+    这里<b>只做查询翻看</b>：未丢弃的候选会直接进编译，真正的裁决在审批浮层做
+    （改分组 / 退稿都在那里）。本页<b>不花一分钱</b>。
+  </p>
+
+  {% if page_msg %}
+  <div class="alert-bar{% if page_bad %} is-bad{% endif %}">{{ page_msg }}</div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="panel-head">
+      {% comment %}
+      ★ 计数口径（2026-11-09）：标题不再写「待编译候选 {{ ingest_stats.pending }}」——
+        pending 是 status 口径，已编进草稿的候选仍是 pending，真实库 66 条 pending
+        里只有 38 条真待编译。待编译数问 compile_backlog.todo（产物口径，与首页
+        编译按钮同一份判据）；已进草稿/页的逐条打标（守卫在 set_status）。
+      {% endcomment %}
+      <b>未丢弃候选 {{ ingest_stats.pending }}</b>
+      <span class="meta">{{ compile_backlog.todo }} 条待编译 · {{ compile_backlog.skipped }} 条已进草稿/页（裁决去审批浮层）—— 按来源分组</span>
+    </div>
+
+    {% for g in cand_groups %}
+    <div class="cand-group">
+      <h3 class="cand-group-head">
+        {% if g.source_url %}<a href="{{ g.source_url }}" title="跳回原文继续读">{{ g.title }}</a>
+        {% else %}{{ g.title }}{% endif %}
+        <span class="meta">{{ g.source_type }}:{{ g.source_id }} · {{ g.cands|length }} 条</span>
+        {% if g.ai_url %}<a class="cand-link" href="{{ g.ai_url }}">继续对话 →</a>{% endif %}
+      </h3>
+      {% for c in g.cands %}
+      <article class="cand-card">
+        <div class="cand-head">
+          <span class="tag kind-{{ c.kind }}">{{ c.get_kind_display }}</span>
+          <b>{{ c.claim }}</b>
+          {% if c.id in compiled_ids %}<span class="tag st-done">已进草稿/页</span>{% endif %}
+          {% if c.domain %}<span class="tag">{{ c.domain }}</span>{% endif %}
+          {% if c.confidence %}<span class="tag conf-{{ c.confidence }}">{{ c.confidence }}</span>{% endif %}
+        </div>
+        <blockquote class="cand-quote">{{ c.quote }}</blockquote>
+        <div class="cand-actions">
+          <span class="meta">
+            {% if c.quote_from == "highlight" %}来源：我划出的原文（在意/认可，非我的判断）
+            {% elif c.quote_from == "article" %}来源：正文事实（强制提炼，非我的原话）
+            {% else %}来源：我的原话{% endif %}
+          </span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% empty %}
+    <div class="empty">
+      <p><b>现在没有未丢弃的候选。</b>新痕迹攒够后，回知识库点那枚「编译成草稿」，
+        提炼与编译会一次做完；候选随后会在这里出现。</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% comment %}
+  已处理（丢弃 / 历史采纳）默认折叠：它是回看，不是待办。纯查询不留操作按钮；
+  丢弃从来就不是删除，要改判回待审去首页回看区。
+  {% endcomment %}
+  {% if processed_groups %}
+  <details class="panel">
+    <summary class="panel-head">
+      <b>已处理 {{ ingest_stats.accepted|add:ingest_stats.discarded }}</b>
+      <span class="meta">丢弃 {{ ingest_stats.discarded }} · 采纳 {{ ingest_stats.accepted }} —— 点开可翻看（改判回待审在首页回看区）</span>
+    </summary>
+    {% for g in processed_groups %}
+    <div class="cand-group">
+      <h3 class="cand-group-head">
+        {% if g.source_url %}<a href="{{ g.source_url }}">{{ g.title }}</a>
+        {% else %}{{ g.title }}{% endif %}
+        <span class="meta">{{ g.source_type }}:{{ g.source_id }} · {{ g.cands|length }} 条</span>
+      </h3>
+      {% for c in g.cands %}
+      <article class="cand-card is-{{ c.status }}">
+        <div class="cand-head">
+          <span class="tag kind-{{ c.kind }}">{{ c.get_kind_display }}</span>
+          <b>{{ c.claim }}</b>
+          <span class="tag{% if c.status == 'accepted' %} st-done{% elif c.status == 'discarded' %} st-changed{% endif %}">{{ c.get_status_display }}</span>
+          {% if c.domain %}<span class="tag">{{ c.domain }}</span>{% endif %}
+        </div>
+        <blockquote class="cand-quote">{{ c.quote }}</blockquote>
+        <div class="cand-actions">
+          <span class="meta">
+            {% if c.quote_from == "highlight" %}来源：我划出的原文
+            {% elif c.quote_from == "article" %}来源：正文事实（强制提炼）
+            {% else %}来源：我的原话{% endif %}
+          </span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

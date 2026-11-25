@@ -1,0 +1,77 @@
+{% load reader_tags %}<div class="modal-backdrop" onclick="closeModal(this)"></div>
+<div class="modal">
+  <div class="modal-head">
+    <b>配置分级逻辑 · {{ title }}</b>
+    <button class="close" type="button" onclick="closeModal(this)">✕</button>
+  </div>
+
+  <form hx-post="/triage/config/save" hx-target="closest .modal-layer" hx-swap="innerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="scope" value="{{ scope }}">
+
+    <p class="hint">
+      写清楚「什么样的条目算这一级」。只填关心的级别即可。
+      {% if kind == 'feed' %}
+        <b>四段全空 = 不调 LLM</b>，一律按默认级别，零成本；没命中的也一律掉到默认级别。
+        {% if inherited_from %}
+          <br>★ 分类（{{ inherited_from }}）的判据会<b>拼接</b>进来，冲突时以本源为准。
+        {% endif %}
+      {% else %}
+        分类判据会与下属各 feed 的判据<b>拼接</b>；默认级别由各 feed 自己决定（不配则全局 L2）。
+      {% endif %}
+    </p>
+
+    {% for value, label in level_choices %}
+    <div class="field">
+      <label for="l{{ value }}">{{ label }}</label>
+      <span class="src">
+        {% if row and row|level_text:value %}本源自定义{% elif inherited and value == 2 %}继承分类{% else %}未配置{% endif %}
+      </span>
+      <textarea id="l{{ value }}" name="l{{ value }}_text" rows="3"
+        placeholder="{% if value == 0 %}例：纯广告软文；纯情绪发泄；与读者任何关切都无关的日常记录{% elif value == 3 %}例：点名了具体对象，且给出可立刻行动的判断{% else %}例：与读者核心关切相关、值得花时间读的内容{% endif %}">{{ row|level_text:value }}</textarea>
+      {% if value == 2 and inherited %}
+        <div class="inherited">＋ 分类继承：{{ inherited|truncatechars:80 }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if kind == 'feed' %}
+    <div class="field">
+      <label for="note">本源备注</label>
+      <span class="src">非判据</span>
+      <textarea id="note" name="note" rows="2"
+        placeholder="例：标题即全文，正文只有一条链接；或正文是「楼主 + 楼中楼回复」拼接，要判定的是楼主原话">{{ row.note }}</textarea>
+      <div class="inherited">
+        只描述这个源的<b>文本结构 / 格式</b>，<b>不是判据</b>、不参与级别判定规则，
+        会单独注入 prompt 的「本源备注」段。
+      </div>
+    </div>
+    {% endif %}
+
+    {% if kind == 'feed' %}
+    <div class="field">
+      <label for="dl">默认级别</label>
+      <select id="dl" name="default_level">
+        <option value="" {% if row.default_level is None %}selected{% endif %}>默认（L2）</option>
+        {% for value, label in level_choices %}
+        <option value="{{ value }}" {% if row.default_level == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div class="inherited">
+        没命中任何判据、或调用失败时归到这里。留空 = 全局默认 L2。
+        {% if row.default_level == 0 %}
+          <b class="danger">⚠ 默认 L0 = 新条目会被自动标已读（从视野消失）。请至少写一段判据把想看的捞回来。</b>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="modal-foot">
+      {% if kind == 'feed' and has_prompt %}
+        <button type="button" class="btn" onclick="openModal('/triage/prompt?feed={{ sid }}')">查看 prompt</button>
+      {% endif %}
+      <button type="button" class="btn" onclick="closeModal(this)">取消</button>
+      <button type="submit" class="btn primary">保存并重建 prompt</button>
+    </div>
+  </form>
+</div>

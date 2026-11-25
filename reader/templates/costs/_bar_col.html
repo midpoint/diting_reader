@@ -1,0 +1,33 @@
+{% comment %}
+一根柱子（堆叠段 + 横轴标签 + 隐藏的 hover 明细）。按日 / 按小时 / 总览 / 下钻共用。
+
+上下文：r（含 segments / label / show_label / tip_title / calls）
+
+★ 横轴标签抽稀在 `costreport._finalize` 里算好；不显示的标签也要占位（&nbsp;），
+  否则 `.bar-col` 的 `1fr auto` 两行网格少一行，柱子会变高、基线不齐。
+★ hover 明细放在 `.bar-tip`（`display:none`）里，由 app.js 复制到一个 fixed 浮层：
+  原生 title 既不能加粗，也没法保证"柱子上方空白处"都能触发。
+  ★ 去掉所有 title 属性，避免原生 tooltip 和浮层重复。
+★ 每个色块与对应明细行都带 `data-kind`：hover 某个色块时，app.js 高亮那一行、
+  其余行变淡 —— 这样"哪块颜色 = 哪项开销"一眼能对上。
+{% endcomment %}
+<div class="bar-track">
+  {% for seg in r.segments %}
+    {% if seg.pct > 0 %}
+    <div class="bar-seg k-{{ seg.key }}" data-kind="{{ seg.key }}"
+         style="height:{{ seg.pct }}%"></div>
+    {% endif %}
+  {% endfor %}
+</div>
+<div class="bar-x">{% if r.show_label %}{{ r.label }}{% else %}&nbsp;{% endif %}</div>
+<div class="bar-tip">
+  <div class="tip-head">{{ r.tip_title }}</div>
+  {% for seg in r.segments %}{% if seg.pct > 0 %}
+  <div class="tip-row" data-kind="{{ seg.key }}">
+    <i class="sw k-{{ seg.key }}"></i>
+    <span class="tip-name">{{ seg.label }}</span>
+    <span class="tip-val">¥{{ seg.cost_cny|floatformat:"-4" }}</span>
+  </div>
+  {% endif %}{% endfor %}
+  {% if not r.calls %}<div class="tip-empty">无调用</div>{% endif %}
+</div>

@@ -1,0 +1,62 @@
+{% comment %}
+文章/报告上的「划线 + 批注 + AI 浮窗」组件。
+
+挂三处（靠参数区分，不各自写一份）：
+  · reader/_entry_detail.html      —— RSS 文章（source_type=entry）
+  · summary/detail.html            —— 日报（report / daily-YYYY-MM-DD）
+  · summary/weekly_detail.html     —— 周报（report / weekly-YYYY-MM-DD）
+
+★ 入口按钮**不在这里**：见 wiki/_ai_trigger.html（它要出现在页头动作区）。
+  这里只剩浮窗 + 划线批注。两者靠 id 关联，不靠 DOM 父子关系。
+
+★ 浮窗是可拖动、可缩放的（用户 2026-10-31 要求：固定尺寸时底部内容可能显示
+  不全）。尺寸/位置存在 localStorage，下次打开还是你摆好的样子。拖动区是顶部
+  那一条 .ai-panel-bar，缩放区是右下角 .ai-panel-grip-r。
+
+★ 为什么浮窗里还要懒加载：对话历史只有真打开时才查库、才渲染。占位 div 的 id
+  必须与 _chat.html 里的 chat_id 一致 —— 发送后 _chat.html 用 outerHTML 换掉自己，
+  浮窗容器不动，所以打字打一半、刷新消息都不会把浮窗关掉。
+
+★ 选区交互由 app.js 统一处理：它要知道「正文在哪、这块属于哪个 source」，所以
+  这里用 data 属性把正文容器选择器带出来（entry 是 .detail-content，报告是
+  article.report）—— 本 partial 不硬编码 DOM 结构。
+{% endcomment %}
+<div class="article-tools"
+     data-source-type="{{ source_type }}"
+     data-source-id="{{ source_id }}"
+     data-body-selector="{{ body_selector|default:'' }}">
+{% include "wiki/_marks.html" with source_type=source_type source_id=source_id highlights=highlights annotations=annotations err=err undisplayed=undisplayed %}
+
+  <div class="ai-dock">
+    <section class="ai-panel" id="ai-panel-{{ source_type }}-{{ source_id }}"
+             data-ai-panel data-pos="{{ dock_pos|default:'bottom-right' }}"
+             data-autosend="{{ autosend|default:'' }}"
+             role="dialog" aria-label="问AI" hidden>
+      <div class="ai-panel-bar" data-ai-drag title="拖动可移动浮窗">
+        <span class="ai-panel-grip" aria-hidden="true"></span>
+        <b class="ai-panel-title">问AI</b>
+        <button class="ai-panel-close" type="button" data-ai-close
+                aria-label="收起">×</button>
+      </div>
+      {% comment %}
+      ★ 懒加载不走 htmx 的任何属性，而是 app.js 的 aiOpen() 里显式
+         htmx.ajax() 拉 /wiki/chat。两个原因：
+         1) `?ai=1` 深链要在 entry 详情刚 swap 进来的 afterSwap 里就自动弹窗，
+            那一刻 htmx 还没 process 这块新 DOM，hx-trigger 的监听器没绑上，
+            dispatch 的 aiopen 事件没人接 —— 浮窗会永远停在「点开才加载…」。
+         2) ★★ 更不能只写 `hx-get` 不写 `hx-trigger`：htmx 的默认触发器是
+            **click**，于是「在浮窗里选字/点一下消息」都会重新 GET 一次并整块
+            替换 innerHTML —— 选区当场清空、内容重排滚一行，划线直接做不了
+            （2026-11-01 用户报障，实测抓到 ai-body-* 被 swap）。
+            所以 URL 放在 `data-chat-url`（htmx 不认这个属性，绝不绑定任何触发器），
+            只由 JS 读。「只拉一次」由 aiOpen() 里的 data-loaded 标记保证。
+      {% endcomment %}
+      <div class="ai-panel-body"
+           id="ai-body-{{ source_type }}-{{ source_id }}"
+           data-chat-url="/wiki/chat?source_type={{ source_type }}&source_id={{ source_id }}">
+        <div class="meta">点开才加载…</div>
+      </div>
+      <span class="ai-panel-grip-r" data-ai-resize aria-hidden="true"></span>
+    </section>
+  </div>
+</div>

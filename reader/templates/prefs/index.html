@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}设置{% endblock %}
+{% block content %}
+{% comment %}整页兜底：书签 / 刷新 / 直接输 URL 时走这里，内容与模态里那份完全相同
+（standalone=1 只去掉遮罩和关闭按钮、把定位改回静态）。{% endcomment %}
+<div class="page">
+  <div class="page-head"><h2>设置</h2></div>
+  {% include "prefs/_panel.html" with standalone=1 %}
+</div>
+{% endblock %}

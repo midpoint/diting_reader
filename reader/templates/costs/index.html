@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load reader_tags %}
+
+{% block title %}开销{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h2>开销与 ROI</h2>
+  </div>
+
+  {% include "costs/_range_bar.html" %}
+
+  <p class="meta">
+    口径：¥ 由每次调用落库时的 <code>cost_cny</code> 快照累加（含高低峰 ×2），不重算历史；
+    “公共” = 不属于任何 feed 的调用（全局汇总等）。
+    顶部卡片是<b>当前区间</b>的汇总——换区间就换数字，不再另放固定窗口卡。
+  </p>
+
+  {% if budget.over %}
+  <div class="alert-bar">
+    ⚠ 今日有池子已用尽：
+    {% for p in budget.pools %}{% if p.over %}<b>{{ p.label }}池 ¥{{ p.spent_cny|floatformat:"-4" }}/¥{{ p.limit_cny|floatformat:"-2" }}</b>{% if not forloop.last %}、{% endif %}{% endif %}{% endfor %}。
+    已生效的降级：对应链路<b>本轮不再调 LLM</b>（分级的新条目落 <code>default_level</code>，
+    日报降级为规则版；标题翻译停在已译部分，剩余条目下一轮/次日继续；周报本次生成失败，可次日手动重跑）。
+  </div>
+  {% endif %}
+
+  <!-- ============ 卡片（固定窗口） ============ -->
+  <div class="cards">
+    {% for c in cards %}
+    <div class="card {% if c.current %}is-current{% endif %}">
+      <div class="card-label">{{ c.label }}</div>
+      <div class="card-main">¥{{ c.s.cost_cny|floatformat:"-4" }}</div>
+      <div class="card-sub">≈ ${{ c.s.cost_usd|floatformat:"-4" }}</div>
+      <div class="card-sub">
+        {{ c.s.tokens|num }} tokens（{{ c.s.prompt_tokens|num }} in / {{ c.s.completion_tokens|num }} out）
+      </div>
+      <div class="card-sub">
+        {{ c.s.calls }} 次调用
+        {% if c.s.retries %}· <span class="warn-text">{{ c.s.retries }} 次重试</span>{% endif %}
+        {% if c.s.failures %}· <span class="danger">{{ c.s.failures }} 次失败</span>{% endif %}
+        {% if c.s.cached_tokens %}· 命中缓存 {{ c.s.cached_tokens|num }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+
+    {% for p in budget.pools %}
+    <div class="card">
+      <div class="card-label">{{ p.label }}池日预算（CNY）</div>
+      <form class="budget-form" hx-post="/costs/budget" hx-swap="none">
+        {% csrf_token %}
+        <input type="hidden" name="pool" value="{{ p.pool }}">
+        <span>¥</span>
+        <input type="number" name="budget_cny" step="0.1" min="0"
+               value="{{ p.limit_cny|floatformat:'-2' }}">
+        <button class="btn" type="submit">保存</button>
+      </form>
+      <div class="card-sub">
+        今日已用 <b>{% if p.ratio %}{{ p.ratio }}{% else %}0{% endif %}%</b>
+        （¥{{ p.spent_cny|floatformat:"-4" }} / ¥{{ p.limit_cny|floatformat:"-2" }}）
+        {% if p.over %}<span class="danger">· 已超限</span>{% endif %}
+      </div>
+      {% comment %}
+        超限后果的文字来自 costreport.POOL_NOTES（单一来源）：这里不许按池写
+        if/elif —— 新池会落进 else，把「日报降级」安到别人头上（2026-10-31
+        知识库池就这样显示过一句不成立的承诺）。
+        ★ 注释只能用 comment 标签：Django 的 {# #} 只吃单行，写多行会被当正文渲染。
+      {% endcomment %}
+      <div class="card-sub">{{ p.note }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ============ 图 1：按日 / 按小时 × 用途 ============ -->
+  <div class="panel">
+    <div class="panel-head">
+      <b>{% if chart.mode == 'hour' %}按小时开销 · {{ chart.date|date:"Y-m-d" }}{% else %}按日开销 · {{ range_label }}{% endif %}</b>
+      <span class="meta">
+        峰值 ¥{{ chart.peak_cny|floatformat:"-4" }}
+      </span>
+    </div>
+    {% include "costs/_bars.html" %}
+  </div>
+
+  <!-- ============ 图 2 / 图 3 ============ -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head"><b>Top feed</b><span class="meta">按 ¥ 排序 · {{ range_label }}</span></div>
+      {% if tops %}
+      {% for t in tops %}
+      <div class="hbar">
+        <a class="hbar-label" href="/costs/feed/{{ t.feed_id }}?{{ drill_qs }}" title="{{ t.title }}">{{ t.title }}</a>
+        <div class="hbar-track"><div class="hbar-fill" style="width:{{ t.pct }}%"></div></div>
+        <span class="hbar-val">¥{{ t.cost_cny|floatformat:"-4" }}</span>
+      </div>
+      {% endfor %}
+      {% else %}<p class="empty">窗口内没有按 feed 记账的调用。</p>{% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><b>按分类分布</b><span class="meta">{{ range_label }}</span></div>
+      {% if cats %}
+      {% for c in cats %}
+      <div class="hbar">
+        <span class="hbar-label" title="{{ c.label }}">{{ c.label }}</span>
+        <div class="hbar-track"><div class="hbar-fill alt" style="width:{{ c.pct }}%"></div></div>
+        <span class="hbar-val">¥{{ c.cost_cny|floatformat:"-4" }}</span>
+      </div>
+      {% endfor %}
+      {% else %}<p class="empty">窗口内没有调用。</p>{% endif %}
+    </div>
+  </div>
+
+  <!-- ============ 明细表 ============ -->
+  <div class="panel">
+    <div class="panel-head">
+      <b>feed 明细</b>
+      <span class="meta">{{ range_label }} · 点表头排序，点 feed 名下钻</span>
+    </div>
+    <table class="cgrid">
+      <thead>
+        <tr>
+          <th class="w-name">feed</th>
+          {% for key, label in sorts %}
+          <th class="num">
+            <a href="/costs?{{ range_qs }}&amp;sort={{ key }}&amp;dir={% if sort == key and dir == 'desc' %}asc{% else %}desc{% endif %}">
+              {{ label }}{% if sort == key %}{% if dir == 'desc' %} ↓{% else %} ↑{% endif %}{% endif %}
+            </a>
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in table %}
+        <tr>
+          <td class="w-name"><a href="/costs/feed/{{ r.feed_id }}?{{ drill_qs }}">{{ r.title }}</a></td>
+          <td class="num">¥{{ r.cost_cny|floatformat:"-4" }}</td>
+          <td class="num">{{ r.tokens|num }}</td>
+          <td class="num">{{ r.calls }}</td>
+          <td class="num">{% if r.retries %}{{ r.retries }}{% else %}—{% endif %}</td>
+          <td class="num">{% if r.failures %}<span class="danger">{{ r.failures }}</span>{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="empty">窗口内还没有记账。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

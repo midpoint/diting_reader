@@ -1,0 +1,18 @@
+<div class="modal-backdrop" onclick="closeModal(this)"></div>
+<div class="modal">
+  <div class="modal-head">
+    <b>已保存 · {{ title }}</b>
+    <button class="close" type="button" onclick="closeModal(this)">✕</button>
+  </div>
+  <div class="modal-body">
+    {% if rebuilt %}
+      <p>已重建 {{ rebuilt|length }} 个 feed 的 prompt：<b>{{ rebuilt|join:", " }}</b></p>
+      <p class="hint">★ 不重判历史条目，只对新条目生效。</p>
+    {% else %}
+      <p>已保存。当前没有任何判据（四段全空）→ 该范围<b>不调 LLM</b>，一律按默认级别。</p>
+    {% endif %}
+  </div>
+  <div class="modal-foot">
+    <button type="button" class="btn primary" onclick="closeModal(this)">好</button>
+  </div>
+</div>

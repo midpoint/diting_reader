@@ -1,0 +1,7 @@
+Django>=5.0
+requests>=2.31
+APScheduler>=3.10
+pypinyin>=0.55.0
+# Windows 系统通知后端（core/notify_win.py）：仅 win32 安装，mac/linux 自动跳过。
+# PEP 508 环境标记由 pip 原生解析 —— 单文件，不需要单独的 requirements-win.txt。
+winotify>=1.1.0; sys_platform == "win32"
