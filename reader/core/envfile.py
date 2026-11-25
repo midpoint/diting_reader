@@ -173,6 +173,11 @@ def apply_to_settings(values: dict) -> set:
         attr = _NAME_MAP.get(env_key, env_key)
         if not hasattr(settings, attr):
             continue
+        # 与 config/settings.py 的启动期规范化保持一致：热应用后的值与重启后一致。
+        if env_key == "DATASOURCE_ENGINE":
+            raw = str(raw).strip().lower()
+        elif env_key.endswith("_URL"):
+            raw = str(raw).strip().rstrip("/")
         try:
             val = _cast_like(getattr(settings, attr), raw)
         except (TypeError, ValueError):

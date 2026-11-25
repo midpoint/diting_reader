@@ -177,14 +177,18 @@ def _validate_env(key: str, raw: str):
             return None, f"{f['label']} 不能大于 {hi}"
         return str(v), ""
     if f["type"] == "select":
+        s = s.lower()
         allowed = {v for v, _ in f["options"]}
         if s not in allowed:
             return None, f"{f['label']} 取值非法"
         return s, ""
     if len(s) > 500:
         return None, f"{f['label']} 过长（≤500 字符）"
-    if f["key"].endswith("_URL") and s and not re.match(r"^https?://", s):
-        return None, f"{f['label']} 必须以 http:// 或 https:// 开头"
+    if f["key"].endswith("_URL") and s:
+        if not re.match(r"^https?://", s):
+            return None, f"{f['label']} 必须以 http:// 或 https:// 开头"
+        # 与 settings.py 的 `.rstrip("/")` 对齐：避免保存后出现 `...//accounts/...`
+        s = s.rstrip("/")
     return s, ""
 
 

@@ -131,6 +131,21 @@ class PrefsEnvViewTests(TestCase):
         })
         self.assertIn("http", json.loads(r.content)["err"])
 
+    def test_url_trailing_slash_normalized(self):
+        r = self.post("/prefs/env", {
+            "DATASOURCE_ENGINE": "GREADER",
+            "GREADER_BASE_URL": "https://rss.example/api/greader.php/",
+            "GREADER_USERNAME": "a",
+            "GREADER_PASSWORD": "b",
+        })
+        self.assertTrue(json.loads(r.content)["ok"])
+        vals = envfile.read_values()
+        self.assertEqual(vals["DATASOURCE_ENGINE"], "greader")
+        self.assertEqual(vals["GREADER_BASE_URL"],
+                         "https://rss.example/api/greader.php")
+        self.assertEqual(settings.GREADER_BASE_URL,
+                         "https://rss.example/api/greader.php")
+
     def test_test_endpoint_uses_datasource(self):
         class FakeDS:
             def list_tree(self):
