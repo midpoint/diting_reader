@@ -26,6 +26,13 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# GitHub Actions 的 Windows runner 控制台编码不一定是 UTF-8；本脚本会打印中文，
+# 编码失败会让整个构建在无关紧要的 print 上挂掉。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 PY_VERSION = "3.12.10"
 PY_URL = (f"https://www.python.org/ftp/python/{PY_VERSION}/"
           f"python-{PY_VERSION}-embed-amd64.zip")
@@ -105,19 +112,25 @@ def patch_pth(python_dir: Path):
 
 def install_deps(site_packages: Path, cache_dir: Path):
     site_packages.mkdir(parents=True, exist_ok=True)
+    # ★ 在 Windows runner 上按本机解释器直接取 wheel；在 Linux/macOS 上才需要
+    #   显式 --platform/--abi 交叉下载。两条路都只接受预编译 wheel。
+    extra = []
+    if sys.platform != "win32":
+        extra = [
+            "--platform", "win_amd64", "--python-version", "3.12",
+            "--implementation", "cp", "--abi", "cp312",
+        ]
     cmd = [
         sys.executable, "-m", "pip", "install",
         "--disable-pip-version-check", "--no-input",
         "--target", str(site_packages),
-        "--platform", "win_amd64",
-        "--python-version", "3.12",
-        "--implementation", "cp", "--abi", "cp312",
+        *extra,
         "--only-binary=:all:",
         "--upgrade",
         "--cache-dir", str(cache_dir),
         *DEPS,
     ]
-    log("安装 Windows 依赖：" + " ".join(DEPS))
+    log(f"安装 Windows 依赖（host={sys.platform}）：" + " ".join(DEPS))
     retry(lambda: subprocess.run(cmd, check=True), "pip install", times=2)
 
 

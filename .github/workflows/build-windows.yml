@@ -16,6 +16,9 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +36,24 @@ jobs:
           fi
 
       - name: Build portable zip
-        run: python scripts/build_windows_portable.py --version "${{ env.VERSION }}"
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/build_windows_portable.py --version "${{ env.VERSION }}" 2>&1 | tee build.log
+
+      # 公开仓库的 Actions 日志只能登录后看；失败时把构建日志推到独立分支，
+      # 维护者用 git 就能诊断（分支名带 run id，事后可删）。
+      - name: Preserve build log on failure
+        if: failure()
+        shell: bash
+        run: |
+          if [ ! -s build.log ]; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp build.log ci-build.log
+          git add -f ci-build.log
+          git commit -m "ci: build log for run ${{ github.run_id }}"
+          git push origin HEAD:refs/heads/ci-log-${{ github.run_id }}
 
       - name: Show artifacts
         shell: bash
