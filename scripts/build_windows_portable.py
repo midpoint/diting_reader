@@ -169,6 +169,13 @@ def main():
     args = ap.parse_args()
     version = args.version.lstrip("v") or "dev"
 
+    # ★ 必需文件先查：曾出现 .env.example 被 .gitignore 掉、CI checkout 里没有，
+    #   构建"成功"但 ZIP 里缺首次运行模板。宁可在这一步失败。
+    for rel in (".env.example", "reader/manage.py",
+                "packaging/windows/启动谛听.cmd", "README-Windows.md"):
+        if not (ROOT / rel).exists():
+            raise SystemExit(f"缺少必需文件：{rel}（是否被 .gitignore 排除？）")
+
     build_root = ROOT / "build" / APP_NAME
     if build_root.exists():
         shutil.rmtree(build_root)
