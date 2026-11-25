@@ -5,6 +5,13 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ★ 便携 exe（PyInstaller）把源码解压到临时目录，而数据/.env/Meta 必须落在
+#   **exe 旁边**、可写且不会随进程退出被清掉。启动器设置 DITING_HOME 指向
+#   exe 所在目录；源码运行不设置它，行为与原来完全一致。
+_DITING_HOME = os.environ.get("DITING_HOME", "").strip()
+PROJECT_ROOT_HINT = (Path(_DITING_HOME).expanduser().resolve()
+                     if _DITING_HOME else BASE_DIR.parent)
+
 sys.path.insert(0, str(BASE_DIR))
 sys.path.insert(0, str(BASE_DIR / "apps"))
 
@@ -23,7 +30,7 @@ def _load_dotenv(path: Path) -> dict:
     return env
 
 
-_FILE_ENV = _load_dotenv(BASE_DIR.parent / ".env")
+_FILE_ENV = _load_dotenv(PROJECT_ROOT_HINT / ".env")
 
 
 def env(key: str, default: str = "") -> str:
@@ -110,7 +117,7 @@ TEMPLATES = [
     },
 ]
 
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = ((PROJECT_ROOT_HINT / "data") if _DITING_HOME else (BASE_DIR / "data"))
 if not DATA_DIR.exists():
     DATA_DIR.mkdir(parents=True)
 
@@ -374,8 +381,8 @@ NOTIFY_READER_BASE = env("NOTIFY_READER_BASE", "http://127.0.0.1:8099").rstrip("
 # ---------------------------------------------------------------- 常驻调度
 ENABLE_SCHEDULER = env("ENABLE_SCHEDULER", "1") == "1"
 
-# 项目根（Meta/interest-profile.md 在这里）
-PROJECT_ROOT = BASE_DIR.parent
+# 项目根（Meta/interest-profile.md 在这里；便携 exe 下 = exe 所在目录）
+PROJECT_ROOT = PROJECT_ROOT_HINT
 REPORT_DIR = PROJECT_ROOT / "data" / "reports"
 SUMMARY_CACHE_DIR = PROJECT_ROOT / "data" / "cache" / "summary"
 # wiki 层（raw 快照 / 草稿 / 已审批页 / index / log）。★ 放 data/ 与 reports 同级：

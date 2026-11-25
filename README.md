@@ -46,11 +46,16 @@ python reader/manage.py runserver 127.0.0.1:8099
 | 知识库 | `data/wiki/`（可用 `WIKI_DIR` 指到 Obsidian vault） |
 | 读者画像 / 本体 | `Meta/interest-profile.md`、`Meta/ontology.md` |
 
-## Windows 便携版
+## Windows
 
-到 [Releases](https://github.com/midpoint/diting_reader/releases) 下载
-`diting-reader-windows-*.zip`，解压后双击 `启动谛听.cmd`。包内自带 Python 与全部依赖，
-不需要安装任何东西。首次启动会打开设置页，填完数据源即可使用。
+到 [Releases](https://github.com/midpoint/diting_reader/releases) 下载：
+
+- **`diting-reader-windows-<版本>.exe`（推荐）**：单文件，双击即用；
+- `diting-reader-windows-<版本>.zip`：便携包，解压后双击 `启动谛听.cmd`。
+
+两者都自带 Python 与全部依赖，不需要安装任何东西。首次启动会生成 `.env` 并
+直接打开设置页，填完数据源即可使用。详见
+[`README-Windows.md`](README-Windows.md)。
 
 ## FreshRSS 配置与口径
 
@@ -64,11 +69,13 @@ python reader/manage.py test core.tests.test_greader_units core.tests.test_prefs
 python reader/manage.py test core.tests
 ```
 
-Windows 便携包可在本地构建（Linux/macOS 也可交叉构建）：
+Windows 单文件 exe 与便携包可在本地构建（PyInstaller 不支持交叉编译；
+exe 建议在 Windows 上构建，Linux/macOS 构建出的同名文件仅用于冒烟验证）：
 
 ```bash
-python scripts/build_windows_portable.py --version 0.1.0
-# 产物：dist/diting-reader-windows-0.1.0.zip
+python scripts/build_windows_portable.py --version 0.2.0
+python scripts/build_windows_exe.py --version 0.2.0   # 需要 pyinstaller>=6.10,<7
+# 产物：dist/diting-reader-windows-0.2.0.zip / .exe
 ```
 
 CI 在 [`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml)：
