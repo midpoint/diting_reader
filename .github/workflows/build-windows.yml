@@ -41,6 +41,9 @@ jobs:
           set -o pipefail
           python scripts/build_windows_portable.py --version "${{ env.VERSION }}" 2>&1 | tee build.log
 
+      - name: Install runtime deps for PyInstaller
+        run: python -m pip install -r reader/requirements.txt
+
       - name: Install PyInstaller
         run: python -m pip install "pyinstaller>=6.10,<7"
 

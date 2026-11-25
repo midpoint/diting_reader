@@ -50,6 +50,25 @@ def main() -> int:
         log("缺少 PyInstaller：先执行 python -m pip install 'pyinstaller>=6.10,<7'")
         return 2
 
+    # ★ 依赖必须装在**构建解释器**里：PyInstaller 只收集它自己能 import 到的包。
+    #   曾踩到：CI 只把依赖装进便携包的 target 目录，exe 里没有 Django，启动即
+    #   ModuleNotFoundError。这里先硬性检查，避免再产出"能下载、不能运行"的包。
+    missing = []
+    for mod in ("django", "requests", "apscheduler", "pypinyin"):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if sys.platform == "win32":
+        try:
+            __import__("winotify")
+        except ImportError:
+            missing.append("winotify")
+    if missing:
+        log("缺少运行依赖：" + ", ".join(missing) +
+            "；先执行 python -m pip install -r reader/requirements.txt")
+        return 2
+
     out_dir = Path(args.out_dir)
     work_dir = ROOT / "build" / "pyinstaller"
     out_dir.mkdir(parents=True, exist_ok=True)
