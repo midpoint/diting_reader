@@ -113,9 +113,15 @@ def port_open(port: int) -> bool:
         return s.connect_ex((HOST, port)) == 0
 
 
-def open_browser_later(url: str, delay: float = 1.5):
+def open_browser_when_ready(url: str, port: int, timeout: float = 40.0):
+    """等端口真正可连再开浏览器：onefile 解压 / migrate 在慢机器上可能要几秒，
+    固定 sleep 会打开一个「无法访问」的页面。"""
     def _run():
-        time.sleep(delay)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if port_open(port):
+                break
+            time.sleep(0.3)
         try:
             webbrowser.open(url)
         except Exception:  # noqa: BLE001  打不开浏览器不该影响服务
@@ -181,7 +187,7 @@ def main() -> int:
         return 1
 
     target = f"{url}/prefs?g=datasource" if first else url
-    open_browser_later(target)
+    open_browser_when_ready(target, port)
     try:
         execute_from_command_line(
             ["manage.py", "runserver", f"{HOST}:{port}", "--noreload"])
